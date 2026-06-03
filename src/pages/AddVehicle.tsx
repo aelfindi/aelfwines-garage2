@@ -11,9 +11,6 @@ import toast from 'react-hot-toast'
 const VEHICLE_TYPES: { key: VehicleType; label: string }[] = [
   { key: 'car', label: 'Coche' },
   { key: 'moto', label: 'Moto' },
-  { key: 'van', label: 'Furgoneta' },
-  { key: 'truck', label: 'Camion' },
-  { key: 'other', label: 'Otro' },
 ]
 
 type Step = 1 | 2 | 3
@@ -109,7 +106,7 @@ export function AddVehicle() {
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-body font-medium text-gray-600 mb-2">Tipo de vehiculo</label>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 {VEHICLE_TYPES.map(({ key, label }) => (
                   <button
                     key={key} type="button"

@@ -125,3 +125,17 @@ export interface SessionNote {
 export interface SettingsDiff {
   [field: string]: { a: unknown; b: unknown; changed: boolean }
 }
+
+export type VehicleDocType = 'manual' | 'parts_list'
+
+export interface VehicleDocument {
+  id: string
+  vehicle_id: string
+  user_id: string
+  name: string
+  storage_path: string
+  doc_type: VehicleDocType
+  file_size: number | null
+  created_at: string
+  signed_url?: string
+}

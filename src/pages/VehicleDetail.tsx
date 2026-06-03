@@ -13,6 +13,7 @@ import { Button } from '../components/ui/Button'
 import { Input, Textarea } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { getMaintenanceStatus, formatKm, VEHICLE_TYPE_ICONS } from '../lib/helpers'
+import { DocumentsSection } from '../components/vehicles/DocumentsSection'
 import type { MaintenanceLog as MaintenanceLogType, Vehicle } from '../types'
 import toast from 'react-hot-toast'
 
@@ -163,6 +164,8 @@ export function VehicleDetail() {
                 <p className="text-sm text-gray-600">{vehicle.notes}</p>
               </div>
             )}
+
+            <DocumentsSection vehicleId={id!} />
 
             {isMoto && (
               <Button variant="secondary" onClick={() => navigate(`/vehicles/${id}/sessions`)}>

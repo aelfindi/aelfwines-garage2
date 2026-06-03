@@ -36,12 +36,26 @@ export function Home() {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
-            {vehicles.map((v) => {
-              const logs = maintenanceLogs[v.id] ?? []
-              const lastOrdinary = logs.filter((l) => l.type === 'ordinary')[0] ?? null
+          <div className="space-y-6">
+            {(['moto', 'car'] as const).map((type) => {
+              const group = vehicles.filter((v) => v.type === type)
+              if (group.length === 0) return null
+              const label = type === 'moto' ? 'Motos' : 'Coches'
+              const icon = type === 'moto' ? '🏍️' : '🚗'
               return (
-                <VehicleCard key={v.id} vehicle={v} lastLog={lastOrdinary} onDelete={handleDelete} />
+                <div key={type}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-base">{icon}</span>
+                    <h2 className="font-display font-semibold text-xs text-gray-400 uppercase tracking-widest">{label}</h2>
+                  </div>
+                  <div className="space-y-3">
+                    {group.map((v) => {
+                      const logs = maintenanceLogs[v.id] ?? []
+                      const lastOrdinary = logs.filter((l) => l.type === 'ordinary')[0] ?? null
+                      return <VehicleCard key={v.id} vehicle={v} lastLog={lastOrdinary} onDelete={handleDelete} />
+                    })}
+                  </div>
+                </div>
               )
             })}
           </div>

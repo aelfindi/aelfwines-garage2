@@ -1,3 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <text y=".9em" font-size="90">🏍️</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="12" fill="#1C1C1E"/>
+  <!-- Rear wheel -->
+  <circle cx="16" cy="40" r="12" fill="none" stroke="#E8682A" stroke-width="3.5"/>
+  <circle cx="16" cy="40" r="2.5" fill="#E8682A"/>
+  <!-- Front wheel -->
+  <circle cx="48" cy="40" r="10" fill="none" stroke="#E8682A" stroke-width="3"/>
+  <circle cx="48" cy="40" r="2" fill="#E8682A"/>
+  <!-- Frame -->
+  <path d="M16 40 C20 28 30 22 38 22 C43 22 46 26 48 40"
+        fill="none" stroke="#FAF7F2" stroke-width="3" stroke-linecap="round"/>
+  <!-- Tank -->
+  <path d="M27 22 Q34 17 40 22 L37 27 L30 27 Z" fill="#E8682A"/>
+  <!-- Engine -->
+  <rect x="28" y="28" width="12" height="8" rx="2" fill="#2A5F8F"/>
+  <!-- Handlebar -->
+  <line x1="39" y1="20" x2="46" y2="16" stroke="#FAF7F2" stroke-width="2.5" stroke-linecap="round"/>
 </svg>

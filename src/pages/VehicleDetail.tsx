@@ -88,8 +88,13 @@ export function VehicleDetail() {
 
   const handleAdd = async (payload: Partial<MaintenanceLogType>) => {
     await createLog(payload)
-    if (payload.km_at_service && payload.km_at_service > vehicle.current_km) {
-      try { await updateVehicle(vehicle.id, { current_km: payload.km_at_service }) } catch { /* silent */ }
+    const updates: Partial<Vehicle> = {}
+    if (payload.km_at_service && payload.km_at_service > vehicle.current_km)
+      updates.current_km = payload.km_at_service
+    if (payload.hours_at_service && payload.hours_at_service > vehicle.current_hours)
+      updates.current_hours = payload.hours_at_service
+    if (Object.keys(updates).length > 0) {
+      try { await updateVehicle(vehicle.id, updates) } catch { /* silent */ }
     }
     toast.success('Registro anadido')
   }

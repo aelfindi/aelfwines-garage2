@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
-import { History, SlidersHorizontal } from 'lucide-react'
+import { History, SlidersHorizontal, Pencil } from 'lucide-react'
 import { useAppStore } from '../store'
 import { useMotoSettings } from '../hooks/useMotoSettings'
 import { Header } from '../components/layout/Header'
@@ -18,7 +18,56 @@ import type { MotoSettings as MotoSettingsType, MotoSettingsHistory, Condition }
 import toast from 'react-hot-toast'
 
 type Tab = 'active' | 'history'
-type Section = 'carburation' | 'suspension'
+
+const v = (val: string | number | null | undefined, unit = '') =>
+  val != null && val !== '' ? `${val}${unit}` : '-'
+
+function SettingsTable({ form }: { form: Partial<MotoSettingsType> }) {
+  const carb = [
+    ['Main jet', v(form.main_jet)],
+    ['Pilot jet', v(form.pilot_jet)],
+    ['Clip aguja', v(form.needle_clip)],
+    ['Tornillo aire', v(form.air_screw, ' v.')],
+    ['Mezcla', v(form.fuel_mixture)],
+  ]
+  const fork = [
+    ['Precarga', v(form.fork_preload, ' cl.')],
+    ['Compresion', v(form.fork_compression, ' cl.')],
+    ['Rebote', v(form.fork_rebound, ' cl.')],
+    ['Nivel aceite', v(form.fork_oil_level, ' mm')],
+    ['Tipo aceite', v(form.fork_oil_type)],
+  ]
+  const shock = [
+    ['Precarga', v(form.shock_preload, ' cl.')],
+    ['Comp. alta vel.', v(form.shock_compression_high, ' cl.')],
+    ['Comp. baja vel.', v(form.shock_compression_low, ' cl.')],
+    ['Rebote', v(form.shock_rebound, ' cl.')],
+  ]
+
+  const Section = ({ title, rows }: { title: string; rows: string[][] }) => (
+    <div className="bg-white rounded-xl border border-garage-sand overflow-hidden">
+      <div className="px-4 py-2.5 bg-garage-cream border-b border-garage-sand">
+        <h4 className="font-display font-semibold text-xs text-garage-dark uppercase tracking-wide">{title}</h4>
+      </div>
+      <div className="divide-y divide-garage-sand">
+        {rows.map(([label, val]) => (
+          <div key={label} className="flex justify-between items-center px-4 py-2.5">
+            <span className="text-xs text-gray-500 font-body">{label}</span>
+            <span className={`text-sm font-body font-medium ${val === '-' ? 'text-gray-300' : 'text-garage-dark'}`}>{val}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="space-y-3">
+      <Section title="Carburacion / Inyeccion" rows={carb} />
+      <Section title="Horquilla delantera" rows={fork} />
+      <Section title="Amortiguador trasero" rows={shock} />
+    </div>
+  )
+}
 
 export function MotoSettings() {
   const { id } = useParams<{ id: string }>()
@@ -26,13 +75,14 @@ export function MotoSettings() {
   const vehicle = vehicles.find((v) => v.id === id)
   const { settings, history, loading, saveSettings, saveSnapshot, deleteSnapshot } = useMotoSettings(id!)
   const [tab, setTab] = useState<Tab>('active')
-  const [openSection, setOpenSection] = useState<Section>('carburation')
+  const [editing, setEditing] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
   const [snapshotModal, setSnapshotModal] = useState(false)
   const [compareModal, setCompareModal] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [form, setForm] = useState<Partial<MotoSettingsType>>({})
   const settingsLoaded = useRef(false)
+
   useEffect(() => {
     if (settingsLoaded.current) return
     if (settings) {
@@ -43,6 +93,7 @@ export function MotoSettings() {
       settingsLoaded.current = true
     }
   }, [settings, history, loading])
+
   const [snapshotForm, setSnapshotForm] = useState({ label: '', condition: 'track_dry' as Condition, rating: '4', notes: '' })
 
   const handleChange = (key: keyof MotoSettingsType, value: string | number | null) =>
@@ -50,8 +101,11 @@ export function MotoSettings() {
 
   const handleSave = async () => {
     setSavingSettings(true)
-    try { await saveSettings(form); toast.success('Configuracion guardada') }
-    catch { toast.error('Error al guardar') } finally { setSavingSettings(false) }
+    try {
+      await saveSettings(form)
+      toast.success('Configuracion guardada')
+      setEditing(false)
+    } catch { toast.error('Error al guardar') } finally { setSavingSettings(false) }
   }
 
   const handleSnapshot = async () => {
@@ -67,6 +121,7 @@ export function MotoSettings() {
   const handleApply = (snap: MotoSettingsHistory) => {
     setForm({ ...snap })
     setTab('active')
+    setEditing(false)
     toast.success('Setup cargado — guarda para aplicar')
   }
 
@@ -89,50 +144,49 @@ export function MotoSettings() {
               onClick={() => setTab(t)}
               className={`flex-1 py-3 text-sm font-body font-medium border-b-2 transition-colors ${tab === t ? 'border-garage-orange text-garage-orange' : 'border-transparent text-gray-500'}`}
             >
-              {t === 'active' ? <span className="flex items-center justify-center gap-1"><SlidersHorizontal size={15} /> Activo</span> : <span className="flex items-center justify-center gap-1"><History size={15} /> Historial</span>}
+              {t === 'active'
+                ? <span className="flex items-center justify-center gap-1"><SlidersHorizontal size={15} /> Activo</span>
+                : <span className="flex items-center justify-center gap-1"><History size={15} /> Historial</span>}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="px-4 py-5 space-y-5">
+      <div className="px-4 py-5 space-y-4">
         {tab === 'active' && (
           <>
-            <button
-              className="w-full flex items-center justify-between py-3 border-b border-garage-sand font-display font-semibold text-base text-garage-dark"
-              onClick={() => setOpenSection(openSection === 'carburation' ? 'suspension' : 'carburation')}
-            >
-              Carburacion / Inyeccion
-              <span className="text-gray-400">{openSection === 'carburation' ? '▲' : '▼'}</span>
-            </button>
-            {openSection === 'carburation' && <CarburetionSettings values={form} onChange={handleChange} />}
-
-            <button
-              className="w-full flex items-center justify-between py-3 border-b border-garage-sand font-display font-semibold text-base text-garage-dark"
-              onClick={() => setOpenSection(openSection === 'suspension' ? 'carburation' : 'suspension')}
-            >
-              Suspension
-              <span className="text-gray-400">{openSection === 'suspension' ? '▲' : '▼'}</span>
-            </button>
-            {openSection === 'suspension' && <SuspensionSettings values={form} onChange={handleChange} />}
-
-            <div className="flex gap-3 pt-2">
-              <Button variant="ghost" className="flex-1" onClick={() => setSnapshotModal(true)}>
-                Guardar snapshot
-              </Button>
-              <Button className="flex-1" loading={savingSettings} onClick={handleSave}>
-                Guardar
-              </Button>
-            </div>
+            {!editing ? (
+              <>
+                <SettingsTable form={form} />
+                <div className="flex gap-3 pt-1">
+                  <Button variant="ghost" className="flex-1" onClick={() => setSnapshotModal(true)}>
+                    Guardar snapshot
+                  </Button>
+                  <Button className="flex-1" onClick={() => setEditing(true)}>
+                    <span className="flex items-center justify-center gap-1.5"><Pencil size={14} /> Editar</span>
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 className="font-display font-semibold text-sm text-garage-steel uppercase tracking-wide">Carburacion / Inyeccion</h3>
+                <CarburetionSettings values={form} onChange={handleChange} />
+                <h3 className="font-display font-semibold text-sm text-garage-steel uppercase tracking-wide pt-2">Suspension</h3>
+                <SuspensionSettings values={form} onChange={handleChange} />
+                <div className="flex gap-3 pt-2">
+                  <Button variant="ghost" className="flex-1" onClick={() => setEditing(false)}>Cancelar</Button>
+                  <Button variant="ghost" className="flex-1" onClick={() => setSnapshotModal(true)}>Snapshot</Button>
+                  <Button className="flex-1" loading={savingSettings} onClick={handleSave}>Guardar</Button>
+                </div>
+              </>
+            )}
           </>
         )}
 
         {tab === 'history' && (
           <>
             {selectedIds.length === 2 && (
-              <Button className="w-full" onClick={() => setCompareModal(true)}>
-                Comparar seleccionados
-              </Button>
+              <Button className="w-full" onClick={() => setCompareModal(true)}>Comparar seleccionados</Button>
             )}
             {selectedIds.length === 1 && (
               <p className="text-xs text-gray-500 text-center">Selecciona otro setup para comparar</p>
@@ -161,13 +215,10 @@ export function MotoSettings() {
             <label className="block text-xs font-body font-medium text-gray-600 mb-1">Valoracion (1-5)</label>
             <div className="flex gap-2">
               {[1, 2, 3, 4, 5].map((n) => (
-                <button
-                  key={n} type="button"
+                <button key={n} type="button"
                   onClick={() => setSnapshotForm((f) => ({ ...f, rating: String(n) }))}
                   className={`flex-1 py-2 rounded-lg text-lg transition-colors ${Number(snapshotForm.rating) >= n ? 'text-garage-orange' : 'text-gray-300'}`}
-                >
-                  ★
-                </button>
+                >★</button>
               ))}
             </div>
           </div>

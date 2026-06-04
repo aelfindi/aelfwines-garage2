@@ -66,6 +66,7 @@ export function VehicleDetail() {
         maintenance_interval_km: editForm.maintenance_interval_km ? Number(editForm.maintenance_interval_km) : null,
         maintenance_interval_hours: editForm.maintenance_interval_hours ? Number(editForm.maintenance_interval_hours) : null,
         current_km: editForm.current_km ? Number(editForm.current_km) : 0,
+        current_hours: editForm.current_hours ? Number(editForm.current_hours) : 0,
         notes: String(editForm.notes || '').trim() || null,
       })
       toast.success('Vehiculo actualizado')

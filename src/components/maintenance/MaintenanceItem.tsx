@@ -12,15 +12,15 @@ interface Props {
   onDelete?: (id: string) => Promise<void>
 }
 
-function getCategoryLabel(type: string, category: string) {
+function getCategoryLabels(type: string, category: string) {
   const list = type === 'ordinary' ? ORDINARY_CATEGORIES : EXTRAORDINARY_CATEGORIES
-  return list.find((c) => c.key === category) ?? { label: category, icon: '🔧' }
+  return category.split(',').map((k) => list.find((c) => c.key === k.trim()) ?? { label: k.trim(), icon: '🔧' })
 }
 
 export function MaintenanceItem({ log, onDelete }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const cat = getCategoryLabel(log.type, log.category)
+  const cats = getCategoryLabels(log.type, log.category)
 
   const handleDelete = async () => {
     if (!onDelete) return
@@ -33,10 +33,10 @@ export function MaintenanceItem({ log, onDelete }: Props) {
       <div className="bg-white rounded-xl border border-garage-sand p-4 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">
-            <span className="text-lg">{cat.icon}</span>
+            <span className="text-lg">{cats[0].icon}</span>
             <div>
               <p className="font-body font-medium text-sm text-garage-dark">{log.title}</p>
-              <p className="text-xs text-gray-500">{cat.label}</p>
+              <p className="text-xs text-gray-500">{cats.map((c) => c.label).join(' + ')}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">

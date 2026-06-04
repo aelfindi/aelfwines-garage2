@@ -56,6 +56,9 @@ export function VehicleCard({ vehicle, lastLog, onDelete }: Props) {
             <p className="text-xs text-gray-500 truncate">{[vehicle.brand, vehicle.model, vehicle.year].filter(Boolean).join(' · ')}</p>
             <div className="flex items-center gap-3 mt-2">
               <span className="text-sm font-body font-medium text-garage-dark">{formatKm(vehicle.current_km)}</span>
+              {vehicle.current_hours > 0 && (
+                <span className="text-xs font-body text-garage-steel">{vehicle.current_hours} h</span>
+              )}
               <StatusBadge status={status} />
             </div>
           </div>

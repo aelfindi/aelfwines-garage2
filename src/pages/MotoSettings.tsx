@@ -31,14 +31,18 @@ export function MotoSettings() {
   const [snapshotModal, setSnapshotModal] = useState(false)
   const [compareModal, setCompareModal] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const [form, setForm] = useState<Partial<MotoSettingsType>>(settings ?? {})
+  const [form, setForm] = useState<Partial<MotoSettingsType>>({})
   const settingsLoaded = useRef(false)
   useEffect(() => {
-    if (settings && !settingsLoaded.current) {
+    if (settingsLoaded.current) return
+    if (settings) {
       setForm(settings)
       settingsLoaded.current = true
+    } else if (!loading && history.length > 0) {
+      setForm(history[0])
+      settingsLoaded.current = true
     }
-  }, [settings])
+  }, [settings, history, loading])
   const [snapshotForm, setSnapshotForm] = useState({ label: '', condition: 'track_dry' as Condition, rating: '4', notes: '' })
 
   const handleChange = (key: keyof MotoSettingsType, value: string | number | null) =>

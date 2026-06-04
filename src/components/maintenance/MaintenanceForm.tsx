@@ -16,14 +16,16 @@ interface Props {
 export function MaintenanceForm({ vehicleId: _vehicleId, currentKm, currentHours, onSave, onCancel }: Props) {
   const [type, setType] = useState<'ordinary' | 'extraordinary'>('ordinary')
   const [loading, setLoading] = useState(false)
+  // Multi-select for ordinary, single for extraordinary
+  const [selectedCats, setSelectedCats] = useState<string[]>(['oil_change'])
   const [form, setForm] = useState<{
-    category: string; title: string; description: string; date: string;
+    title: string; description: string; date: string;
     km_at_service: string; hours_at_service: string;
     next_service_km: string; next_service_hours: string; next_service_date: string;
     cost: string; workshop: string; parts_used: string;
   }>({
-    category: 'oil_change',
-    title: '', description: '',
+    title: '',
+    description: '',
     date: new Date().toISOString().split('T')[0],
     km_at_service: String(currentKm),
     hours_at_service: String(currentHours),
@@ -33,17 +35,42 @@ export function MaintenanceForm({ vehicleId: _vehicleId, currentKm, currentHours
 
   const categories = type === 'ordinary' ? ORDINARY_CATEGORIES : EXTRAORDINARY_CATEGORIES
 
-  const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+  const toggleCat = (key: string) => {
+    if (type === 'extraordinary') {
+      setSelectedCats([key])
+      return
+    }
+    setSelectedCats((prev) => {
+      if (prev.includes(key)) {
+        const next = prev.filter((k) => k !== key)
+        return next.length === 0 ? prev : next
+      }
+      return [...prev, key]
+    })
+  }
+
+  const switchType = (t: 'ordinary' | 'extraordinary') => {
+    setType(t)
+    setSelectedCats(t === 'ordinary' ? ['oil_change'] : ['tires'])
+    setForm((f) => ({ ...f, title: '' }))
+  }
+
+  const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }))
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!form.title || !form.date) { toast.error('Titulo y fecha son obligatorios'); return }
+    const title = form.title.trim() || selectedCats
+      .map((k) => categories.find((c) => c.key === k)?.label ?? k)
+      .join(' + ')
+    if (!title || !form.date) { toast.error('Fecha obligatoria'); return }
     setLoading(true)
     try {
       await onSave({
-        type, category: form.category as MaintenanceLog['category'],
-        title: form.title, description: form.description || null,
+        type,
+        category: selectedCats.join(',') as MaintenanceLog['category'],
+        title,
+        description: form.description || null,
         date: form.date,
         km_at_service: form.km_at_service ? Number(form.km_at_service) : null,
         hours_at_service: form.hours_at_service ? Number(form.hours_at_service) : null,
@@ -64,7 +91,7 @@ export function MaintenanceForm({ vehicleId: _vehicleId, currentKm, currentHours
         {(['ordinary', 'extraordinary'] as const).map((t) => (
           <button
             key={t} type="button"
-            onClick={() => { setType(t); setForm((f) => ({ ...f, category: t === 'ordinary' ? 'oil_change' : 'tires' })) }}
+            onClick={() => switchType(t)}
             className={`flex-1 py-2 rounded-md text-sm font-body font-medium transition-colors ${type === t ? 'bg-white shadow text-garage-dark' : 'text-gray-500'}`}
           >
             {t === 'ordinary' ? 'Ordinario' : 'Extraordinario'}
@@ -73,13 +100,15 @@ export function MaintenanceForm({ vehicleId: _vehicleId, currentKm, currentHours
       </div>
 
       <div>
-        <label className="block text-xs font-body font-medium text-gray-600 mb-1">Categoria</label>
+        <label className="block text-xs font-body font-medium text-gray-600 mb-1">
+          Categoria{type === 'ordinary' ? <span className="text-gray-400 font-normal"> (puedes seleccionar varias)</span> : ''}
+        </label>
         <div className="grid grid-cols-3 gap-2">
           {categories.map((c) => (
             <button
               key={c.key} type="button"
-              onClick={() => setForm((f) => ({ ...f, category: c.key }))}
-              className={`p-2 rounded-lg border text-center text-xs font-body transition-colors ${form.category === c.key ? 'border-garage-orange bg-orange-50 text-garage-orange' : 'border-garage-sand bg-white text-gray-600'}`}
+              onClick={() => toggleCat(c.key)}
+              className={`p-2 rounded-lg border text-center text-xs font-body transition-colors ${selectedCats.includes(c.key) ? 'border-garage-orange bg-orange-50 text-garage-orange' : 'border-garage-sand bg-white text-gray-600'}`}
             >
               <div className="text-lg mb-0.5">{c.icon}</div>
               <div className="leading-tight">{c.label}</div>
@@ -88,7 +117,12 @@ export function MaintenanceForm({ vehicleId: _vehicleId, currentKm, currentHours
         </div>
       </div>
 
-      <Input label="Titulo*" value={form.title} onChange={set('title')} placeholder="ej: Cambio aceite 5W-40" required />
+      <Input
+        label="Titulo (opcional — se genera automaticamente)"
+        value={form.title}
+        onChange={set('title')}
+        placeholder={selectedCats.map((k) => categories.find((c) => c.key === k)?.label ?? k).join(' + ')}
+      />
       <Textarea label="Descripcion" value={form.description} onChange={set('description')} rows={2} />
 
       <div className="grid grid-cols-2 gap-3">

@@ -161,11 +161,11 @@ export function AddVehicle() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Input label="Intervalo (km)" type="number" value={form.maintenance_interval_km} onChange={set('maintenance_interval_km')} />
-              <Input label="Intervalo (horas)" type="number" value={form.maintenance_interval_hours} onChange={set('maintenance_interval_hours')} />
+              {form.type === 'moto' && <Input label="Intervalo (horas)" type="number" value={form.maintenance_interval_hours} onChange={set('maintenance_interval_hours')} />}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Input label="Km actuales" type="number" value={form.current_km} onChange={set('current_km')} />
-              <Input label="Horas totales" type="number" step="0.1" value={form.current_hours} onChange={set('current_hours')} />
+              {form.type === 'moto' && <Input label="Horas totales" type="number" step="0.1" value={form.current_hours} onChange={set('current_hours')} />}
             </div>
             <Textarea label="Notas" value={form.notes} onChange={set('notes')} rows={3} />
           </div>

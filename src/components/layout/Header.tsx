@@ -1,5 +1,7 @@
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, UserCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { supabase } from '../../lib/supabase'
 
 interface Props {
   title: string
@@ -32,6 +34,16 @@ export function Header({ title, subtitle, back, action }: Props) {
 
 export function AppHeader() {
   const navigate = useNavigate()
+  const [loggedIn, setLoggedIn] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setLoggedIn(!!data.session))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setLoggedIn(!!session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-garage-sand px-4 py-3 flex items-center justify-between">
       <div className="flex items-center gap-2">
@@ -42,10 +54,10 @@ export function AppHeader() {
       </div>
       <button
         onClick={() => navigate('/settings')}
-        className="p-2 rounded-full hover:bg-garage-sand text-gray-500"
-        aria-label="Ajustes"
+        className="p-2 rounded-full hover:bg-garage-sand"
+        aria-label="Cuenta"
       >
-        <Settings size={20} />
+        <UserCircle size={24} className={loggedIn ? 'text-garage-steel' : 'text-gray-400'} />
       </button>
     </header>
   )

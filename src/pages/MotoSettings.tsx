@@ -73,7 +73,7 @@ export function MotoSettings() {
   const { id } = useParams<{ id: string }>()
   const vehicles = useAppStore((s) => s.vehicles)
   const vehicle = vehicles.find((v) => v.id === id)
-  const { settings, history, loading, saveSettings, saveSnapshot, deleteSnapshot } = useMotoSettings(id!)
+  const { settings, history, loading, saveSettings, saveSnapshot, saveSnapshotOf, deleteSnapshot } = useMotoSettings(id!)
   const [tab, setTab] = useState<Tab>('active')
   const [editing, setEditing] = useState(false)
   const [savingSettings, setSavingSettings] = useState(false)
@@ -102,6 +102,9 @@ export function MotoSettings() {
   const handleSave = async () => {
     setSavingSettings(true)
     try {
+      const now = new Date()
+      const label = `${now.toLocaleDateString('es-ES')} ${now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`
+      await saveSnapshotOf(form, label)
       await saveSettings(form)
       toast.success('Configuracion guardada')
       setEditing(false)

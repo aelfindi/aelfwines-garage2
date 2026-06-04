@@ -1,6 +1,6 @@
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Pencil } from 'lucide-react'
 import { useState } from 'react'
 import type { MaintenanceLog } from '../../types'
 import { ORDINARY_CATEGORIES, EXTRAORDINARY_CATEGORIES, formatKm, formatCost } from '../../lib/helpers'
@@ -10,6 +10,7 @@ import { Button } from '../ui/Button'
 interface Props {
   log: MaintenanceLog
   onDelete?: (id: string) => Promise<void>
+  onEdit?: (log: MaintenanceLog) => void
 }
 
 function getCategoryLabels(type: string, category: string) {
@@ -17,7 +18,7 @@ function getCategoryLabels(type: string, category: string) {
   return category.split(',').map((k) => list.find((c) => c.key === k.trim()) ?? { label: k.trim(), icon: '🔧' })
 }
 
-export function MaintenanceItem({ log, onDelete }: Props) {
+export function MaintenanceItem({ log, onDelete, onEdit }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const cats = getCategoryLabels(log.type, log.category)
@@ -41,6 +42,15 @@ export function MaintenanceItem({ log, onDelete }: Props) {
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <span className="text-xs text-gray-400">{format(new Date(log.date), 'dd/MM/yyyy', { locale: es })}</span>
+            {onEdit && (
+              <button
+                onClick={() => onEdit(log)}
+                className="p-1 rounded-full hover:bg-garage-sand text-gray-400 hover:text-garage-steel"
+                aria-label="Editar"
+              >
+                <Pencil size={14} />
+              </button>
+            )}
             {onDelete && (
               <button
                 onClick={() => setConfirmDelete(true)}

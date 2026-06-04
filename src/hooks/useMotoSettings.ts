@@ -47,27 +47,39 @@ export function useMotoSettings(vehicleId: string) {
     }
   }
 
-  const saveSnapshot = async (label: string, condition: Condition, rating: number, notes: string) => {
+  const saveSnapshotOf = async (
+    values: Partial<MotoSettings>,
+    label: string,
+    condition: Condition = 'road',
+    rating = 3,
+    notes = ''
+  ) => {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!settings) throw new Error('No settings to snapshot')
     const { data, error } = await supabase
       .from('moto_settings_history')
       .insert({
         vehicle_id: vehicleId, user_id: user?.id,
         label, condition, date: new Date().toISOString().split('T')[0],
         feeling_rating: rating, notes,
-        main_jet: settings.main_jet, pilot_jet: settings.pilot_jet,
-        needle_clip: settings.needle_clip, air_screw: settings.air_screw,
-        fuel_mixture: settings.fuel_mixture, fork_preload: settings.fork_preload,
-        fork_compression: settings.fork_compression, fork_rebound: settings.fork_rebound,
-        fork_oil_level: settings.fork_oil_level, fork_oil_type: settings.fork_oil_type,
-        shock_preload: settings.shock_preload, shock_compression_high: settings.shock_compression_high,
-        shock_compression_low: settings.shock_compression_low, shock_rebound: settings.shock_rebound,
+        main_jet: values.main_jet ?? null, pilot_jet: values.pilot_jet ?? null,
+        needle_clip: values.needle_clip ?? null, air_screw: values.air_screw ?? null,
+        fuel_mixture: values.fuel_mixture ?? null, fork_preload: values.fork_preload ?? null,
+        fork_compression: values.fork_compression ?? null, fork_rebound: values.fork_rebound ?? null,
+        fork_oil_level: values.fork_oil_level ?? null, fork_oil_type: values.fork_oil_type ?? null,
+        shock_preload: values.shock_preload ?? null,
+        shock_compression_high: values.shock_compression_high ?? null,
+        shock_compression_low: values.shock_compression_low ?? null,
+        shock_rebound: values.shock_rebound ?? null,
       })
       .select().single()
     if (error) throw error
     setMotoHistory(vehicleId, [data as MotoSettingsHistory, ...history])
     return data as MotoSettingsHistory
+  }
+
+  const saveSnapshot = async (label: string, condition: Condition, rating: number, notes: string) => {
+    if (!settings) throw new Error('No settings to snapshot')
+    return saveSnapshotOf(settings, label, condition, rating, notes)
   }
 
   const deleteSnapshot = async (id: string) => {
@@ -95,6 +107,6 @@ export function useMotoSettings(vehicleId: string) {
 
   return {
     settings, history, sessions, loading, error,
-    saveSettings, saveSnapshot, deleteSnapshot, createSession, deleteSession,
+    saveSettings, saveSnapshot, saveSnapshotOf, deleteSnapshot, createSession, deleteSession,
   }
 }

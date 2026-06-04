@@ -28,7 +28,7 @@ export function VehicleDetail() {
   const { updateVehicle } = useVehicles()
   const vehicles = useAppStore((s) => s.vehicles)
   const vehicle = vehicles.find((v) => v.id === id)
-  const { ordinaryLogs, extraordinaryLogs, lastOrdinary, loading, createLog, deleteLog } = useMaintenance(id!)
+  const { ordinaryLogs, extraordinaryLogs, lastOrdinary, loading, createLog, updateLog, deleteLog } = useMaintenance(id!)
 
   const [editForm, setEditForm] = useState<Partial<Vehicle>>({})
 
@@ -131,7 +131,7 @@ export function VehicleDetail() {
           {tabs.map(({ key, label }) => (
             <button
               key={key}
-              onClick={() => setTab(key)}
+              onClick={() => key === 'settings' ? navigate(`/vehicles/${id}/settings`) : setTab(key)}
               className={`flex-shrink-0 px-4 py-3 text-sm font-body font-medium border-b-2 transition-colors ${tab === key ? 'border-garage-orange text-garage-orange' : 'border-transparent text-gray-500'}`}
             >
               {label}
@@ -152,7 +152,7 @@ export function VehicleDetail() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-display font-semibold text-xl text-garage-dark">{formatKm(vehicle.current_km)}</span>
-                  {vehicle.current_hours > 0 && (
+                  {isMoto && (
                     <span className="font-display font-semibold text-xl text-garage-steel">{vehicle.current_hours} h</span>
                   )}
                   <StatusBadge status={status} />
@@ -183,24 +183,18 @@ export function VehicleDetail() {
 
         {tab === 'ordinary' && (
           <MaintenanceLog
-            vehicleId={id!} currentKm={vehicle.current_km}
-            logs={ordinaryLogs} type="ordinary" currentHours={vehicle.current_hours}
-            onAdd={handleAdd} onDelete={deleteLog}
+            vehicleId={id!} currentKm={vehicle.current_km} currentHours={vehicle.current_hours}
+            showHours={isMoto} logs={ordinaryLogs} type="ordinary"
+            onAdd={handleAdd} onUpdate={updateLog} onDelete={deleteLog}
           />
         )}
 
         {tab === 'extraordinary' && (
           <MaintenanceLog
-            vehicleId={id!} currentKm={vehicle.current_km}
-            logs={extraordinaryLogs} type="extraordinary" currentHours={vehicle.current_hours}
-            onAdd={handleAdd} onDelete={deleteLog}
+            vehicleId={id!} currentKm={vehicle.current_km} currentHours={vehicle.current_hours}
+            showHours={isMoto} logs={extraordinaryLogs} type="extraordinary"
+            onAdd={handleAdd} onUpdate={updateLog} onDelete={deleteLog}
           />
-        )}
-
-        {tab === 'settings' && isMoto && (
-          <Button onClick={() => navigate(`/vehicles/${id}/settings`)}>
-            Ver configuracion de moto
-          </Button>
         )}
       </div>
 
@@ -222,11 +216,11 @@ export function VehicleDetail() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Intervalo (km)" type="number" value={String(editForm.maintenance_interval_km ?? '')} onChange={(e) => setEditForm((f) => ({ ...f, maintenance_interval_km: Number(e.target.value) || undefined }))} />
-            <Input label="Intervalo (horas)" type="number" value={String(editForm.maintenance_interval_hours ?? '')} onChange={(e) => setEditForm((f) => ({ ...f, maintenance_interval_hours: Number(e.target.value) || undefined }))} />
+            {isMoto && <Input label="Intervalo (horas)" type="number" value={String(editForm.maintenance_interval_hours ?? '')} onChange={(e) => setEditForm((f) => ({ ...f, maintenance_interval_hours: Number(e.target.value) || undefined }))} />}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input label="Km actuales" type="number" value={String(editForm.current_km ?? '')} onChange={(e) => setEditForm((f) => ({ ...f, current_km: Number(e.target.value) }))} />
-            <Input label="Horas totales" type="number" step="0.1" value={String(editForm.current_hours ?? '')} onChange={(e) => setEditForm((f) => ({ ...f, current_hours: Number(e.target.value) }))} />
+            {isMoto && <Input label="Horas totales" type="number" step="0.1" value={String(editForm.current_hours ?? '')} onChange={(e) => setEditForm((f) => ({ ...f, current_hours: Number(e.target.value) }))} />}
           </div>
           <Textarea label="Notas" value={String(editForm.notes ?? '')} onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))} rows={3} />
           <div className="flex gap-3 pt-1">

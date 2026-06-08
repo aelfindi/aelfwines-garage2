@@ -81,6 +81,16 @@ Diferencias tecnicas PostgreSQL -> MySQL/Prisma:
 
 `DATABASE_URL` en `.env` del servidor: `mysql://user:pass@localhost:3306/aelfwines_garage`
 
+`.env` completo del servidor:
+```env
+DATABASE_URL=mysql://user:pass@localhost:3306/aelfwines_garage
+JWT_SECRET=<cadena aleatoria larga, ej. openssl rand -hex 64>
+ADMIN_EMAIL=fabio@indissoluble.com
+ADMIN_PASSWORD_HASH=<bcrypt hash generado con bcrypt.hash('tupassword', 12)>
+UPLOADS_DIR=./uploads
+PORT=3001
+```
+
 Crear la DB desde CloudPanel antes del primer deploy. Aplicar schema con `npx prisma migrate deploy`.
 
 ## API Endpoints

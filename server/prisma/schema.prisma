@@ -1,0 +1,155 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Vehicle {
+  id                       String    @id @default(uuid())
+  userId                   String    @map("user_id")
+  name                     String
+  type                     String
+  brand                    String?
+  model                    String
+  year                     Int?
+  licensePlate             String?   @map("license_plate")
+  engine                   String?
+  oilType                  String?   @map("oil_type")
+  oilQuantity              Decimal?  @map("oil_quantity") @db.Decimal(4, 2)
+  maintenanceIntervalKm    Int?      @map("maintenance_interval_km")
+  maintenanceIntervalHours Int?      @map("maintenance_interval_hours")
+  currentKm                Int       @default(0) @map("current_km")
+  currentHours             Decimal   @default(0) @map("current_hours") @db.Decimal(8, 2)
+  photoUrl                 String?   @map("photo_url")
+  notes                    String?   @db.Text
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  maintenanceLogs     MaintenanceLog[]
+  motoSettings        MotoSettings?
+  motoSettingsHistory MotoSettingsHistory[]
+  sessionNotes        SessionNote[]
+  documents           VehicleDocument[]
+
+  @@map("vehicles")
+}
+
+model MaintenanceLog {
+  id               String    @id @default(uuid())
+  vehicleId        String    @map("vehicle_id")
+  userId           String    @map("user_id")
+  type             String
+  category         String
+  title            String
+  description      String?   @db.Text
+  date             DateTime  @db.Date
+  kmAtService      Int?      @map("km_at_service")
+  hoursAtService   Decimal?  @map("hours_at_service") @db.Decimal(8, 2)
+  nextServiceKm    Int?      @map("next_service_km")
+  nextServiceHours Decimal?  @map("next_service_hours") @db.Decimal(8, 2)
+  nextServiceDate  DateTime? @map("next_service_date") @db.Date
+  cost             Decimal?  @db.Decimal(10, 2)
+  workshop         String?
+  partsUsed        String?   @map("parts_used") @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_logs")
+}
+
+model MotoSettings {
+  id                   String   @id @default(uuid())
+  vehicleId            String   @unique @map("vehicle_id")
+  userId               String   @map("user_id")
+  mainJet              String?  @map("main_jet")
+  pilotJet             String?  @map("pilot_jet")
+  needleClip           Int?     @map("needle_clip")
+  airScrew             Decimal? @map("air_screw") @db.Decimal(4, 2)
+  fuelMixture          String?  @map("fuel_mixture")
+  forkPreload          Int?     @map("fork_preload")
+  forkCompression      Int?     @map("fork_compression")
+  forkRebound          Int?     @map("fork_rebound")
+  forkOilLevel         Int?     @map("fork_oil_level")
+  forkOilType          String?  @map("fork_oil_type")
+  shockPreload         Int?     @map("shock_preload")
+  shockCompressionHigh Int?     @map("shock_compression_high")
+  shockCompressionLow  Int?     @map("shock_compression_low")
+  shockRebound         Int?     @map("shock_rebound")
+  settingNotes         String?  @map("setting_notes") @db.Text
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@map("moto_settings")
+}
+
+model MotoSettingsHistory {
+  id                   String    @id @default(uuid())
+  vehicleId            String    @map("vehicle_id")
+  userId               String    @map("user_id")
+  label                String
+  date                 DateTime  @db.Date
+  condition            String
+  mainJet              String?   @map("main_jet")
+  pilotJet             String?   @map("pilot_jet")
+  needleClip           Int?      @map("needle_clip")
+  airScrew             Decimal?  @map("air_screw") @db.Decimal(4, 2)
+  fuelMixture          String?   @map("fuel_mixture")
+  forkPreload          Int?      @map("fork_preload")
+  forkCompression      Int?      @map("fork_compression")
+  forkRebound          Int?      @map("fork_rebound")
+  forkOilLevel         Int?      @map("fork_oil_level")
+  forkOilType          String?   @map("fork_oil_type")
+  shockPreload         Int?      @map("shock_preload")
+  shockCompressionHigh Int?      @map("shock_compression_high")
+  shockCompressionLow  Int?      @map("shock_compression_low")
+  shockRebound         Int?      @map("shock_rebound")
+  feelingRating        Int?      @map("feeling_rating")
+  notes                String?   @db.Text
+  createdAt            DateTime  @default(now()) @map("created_at")
+
+  vehicle      Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  sessionNotes SessionNote[]
+
+  @@map("moto_settings_history")
+}
+
+model SessionNote {
+  id            String    @id @default(uuid())
+  vehicleId     String    @map("vehicle_id")
+  userId        String    @map("user_id")
+  date          DateTime  @db.Date
+  location      String?
+  condition     String
+  kmStart       Int?      @map("km_start")
+  kmEnd         Int?      @map("km_end")
+  settingId     String?   @map("setting_id")
+  title         String
+  content       String?   @db.Text
+  feelingRating Int?      @map("feeling_rating")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  vehicle Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  setting MotoSettingsHistory? @relation(fields: [settingId], references: [id])
+
+  @@map("session_notes")
+}
+
+model VehicleDocument {
+  id          String   @id @default(uuid())
+  vehicleId   String   @map("vehicle_id")
+  userId      String   @map("user_id")
+  name        String
+  storagePath String   @map("storage_path")
+  docType     String   @map("doc_type")
+  fileSize    Int?     @map("file_size")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@map("vehicle_documents")
+}

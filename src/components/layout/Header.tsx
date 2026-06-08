@@ -1,7 +1,6 @@
 import { ArrowLeft, UserCircle } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
+import { isAuthenticated } from '../../lib/api'
 
 interface Props {
   title: string
@@ -34,15 +33,7 @@ export function Header({ title, subtitle, back, action }: Props) {
 
 export function AppHeader() {
   const navigate = useNavigate()
-  const [loggedIn, setLoggedIn] = useState(false)
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setLoggedIn(!!data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setLoggedIn(!!session)
-    })
-    return () => subscription.unsubscribe()
-  }, [])
+  const loggedIn = isAuthenticated()
 
   return (
     <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-garage-sand px-4 py-3 flex items-center justify-between">

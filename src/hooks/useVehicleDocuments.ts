@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 import type { VehicleDocument, VehicleDocType } from '../types'
 
 export function useVehicleDocuments(vehicleId: string) {
@@ -8,63 +8,33 @@ export function useVehicleDocuments(vehicleId: string) {
 
   const fetchDocuments = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from('vehicle_documents')
-      .select('*')
-      .eq('vehicle_id', vehicleId)
-      .order('created_at', { ascending: false })
-    if (error || !data) { setLoading(false); return }
-
-    const withUrls = await Promise.all(
-      data.map(async (doc) => {
-        const { data: urlData } = await supabase.storage
-          .from('vehicle-docs')
-          .createSignedUrl(doc.storage_path, 3600)
-        return { ...doc, signed_url: urlData?.signedUrl ?? undefined }
-      })
-    )
-    setDocuments(withUrls)
-    setLoading(false)
+    try {
+      const data = await api<VehicleDocument[]>(`/vehicles/${vehicleId}/documents`)
+      setDocuments(data)
+    } catch {
+      // keep existing state on error
+    } finally {
+      setLoading(false)
+    }
   }, [vehicleId])
 
   useEffect(() => { fetchDocuments() }, [fetchDocuments])
 
-  const uploadDocument = async (file: File, name: string, docType: VehicleDocType) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('Not authenticated')
+  const uploadDocument = async (file: File, name: string, docType: VehicleDocType): Promise<void> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('name', name)
+    formData.append('doc_type', docType)
 
-    const ext = file.name.split('.').pop() ?? 'pdf'
-    const path = `${user.id}/${vehicleId}/${Date.now()}.${ext}`
-
-    const { error: uploadError } = await supabase.storage
-      .from('vehicle-docs')
-      .upload(path, file, { contentType: file.type })
-    if (uploadError) throw uploadError
-
-    const { data, error } = await supabase
-      .from('vehicle_documents')
-      .insert({
-        vehicle_id: vehicleId,
-        user_id: user.id,
-        name,
-        storage_path: path,
-        doc_type: docType,
-        file_size: file.size,
-      })
-      .select()
-      .single()
-    if (error) throw error
-
-    const { data: urlData } = await supabase.storage
-      .from('vehicle-docs')
-      .createSignedUrl(path, 3600)
-
-    setDocuments((prev) => [{ ...data, signed_url: urlData?.signedUrl ?? undefined }, ...prev])
+    const doc = await api<VehicleDocument>(`/vehicles/${vehicleId}/documents`, {
+      method: 'POST',
+      body: formData,
+    })
+    setDocuments((prev) => [doc, ...prev])
   }
 
-  const deleteDocument = async (doc: VehicleDocument) => {
-    await supabase.storage.from('vehicle-docs').remove([doc.storage_path])
-    await supabase.from('vehicle_documents').delete().eq('id', doc.id)
+  const deleteDocument = async (doc: VehicleDocument): Promise<void> => {
+    await api(`/documents/${doc.id}`, { method: 'DELETE' })
     setDocuments((prev) => prev.filter((d) => d.id !== doc.id))
   }
 

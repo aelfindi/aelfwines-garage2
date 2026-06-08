@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 import { useAppStore } from '../store'
 import type { MaintenanceLog } from '../types'
 
@@ -12,45 +12,38 @@ export function useMaintenance(vehicleId: string) {
   const fetchLogs = useCallback(async () => {
     if (!vehicleId) return
     setLoading(true)
-    const { data, error } = await supabase
-      .from('maintenance_logs')
-      .select('*')
-      .eq('vehicle_id', vehicleId)
-      .order('date', { ascending: false })
-    if (error) setError(error.message)
-    else setMaintenanceLogs(vehicleId, data ?? [])
-    setLoading(false)
+    try {
+      const data = await api<MaintenanceLog[]>(`/vehicles/${vehicleId}/maintenance`)
+      setMaintenanceLogs(vehicleId, data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error')
+    } finally {
+      setLoading(false)
+    }
   }, [vehicleId, setMaintenanceLogs])
 
   useEffect(() => { fetchLogs() }, [fetchLogs])
 
-  const createLog = async (payload: Partial<MaintenanceLog>) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data, error } = await supabase
-      .from('maintenance_logs')
-      .insert({ ...payload, vehicle_id: vehicleId, user_id: user?.id })
-      .select()
-      .single()
-    if (error) throw error
-    setMaintenanceLogs(vehicleId, [data as MaintenanceLog, ...logs])
-    return data as MaintenanceLog
+  const createLog = async (payload: Partial<MaintenanceLog>): Promise<MaintenanceLog> => {
+    const data = await api<MaintenanceLog>(`/vehicles/${vehicleId}/maintenance`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    setMaintenanceLogs(vehicleId, [data, ...logs])
+    return data
   }
 
-  const updateLog = async (id: string, payload: Partial<MaintenanceLog>) => {
-    const { data, error } = await supabase
-      .from('maintenance_logs')
-      .update(payload)
-      .eq('id', id)
-      .select()
-      .single()
-    if (error) throw error
-    setMaintenanceLogs(vehicleId, logs.map((l) => l.id === id ? data as MaintenanceLog : l))
-    return data as MaintenanceLog
+  const updateLog = async (id: string, payload: Partial<MaintenanceLog>): Promise<MaintenanceLog> => {
+    const data = await api<MaintenanceLog>(`/maintenance/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+    setMaintenanceLogs(vehicleId, logs.map((l) => (l.id === id ? data : l)))
+    return data
   }
 
-  const deleteLog = async (id: string) => {
-    const { error } = await supabase.from('maintenance_logs').delete().eq('id', id)
-    if (error) throw error
+  const deleteLog = async (id: string): Promise<void> => {
+    await api(`/maintenance/${id}`, { method: 'DELETE' })
     setMaintenanceLogs(vehicleId, logs.filter((l) => l.id !== id))
   }
 

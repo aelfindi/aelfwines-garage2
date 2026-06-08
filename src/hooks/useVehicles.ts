@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 import { useAppStore } from '../store'
 import type { Vehicle, MaintenanceLog } from '../types'
 
@@ -11,26 +11,14 @@ export function useVehicles() {
   const fetchVehicles = useCallback(async () => {
     setLoading(true)
     setError(null)
-    const { data: vehicleData, error } = await supabase
-      .from('vehicles')
-      .select('*')
-      .order('created_at', { ascending: false })
-    if (error) { setError(error.message); setLoading(false); return }
-    setVehicles(vehicleData ?? [])
+    try {
+      const vehicleData = await api<Vehicle[]>('/vehicles')
+      setVehicles(vehicleData)
 
-    // Pre-carga el ultimo log ordinario por vehiculo para los badges de estado en Home.
-    // Solo rellena vehiculos que aun no tienen logs en el store (evita sobreescribir
-    // el historial completo cargado por useMaintenance).
-    const { data: logData } = await supabase
-      .from('maintenance_logs')
-      .select('*')
-      .eq('type', 'ordinary')
-      .order('date', { ascending: false })
-
-    if (logData && vehicleData) {
+      const logData = await api<MaintenanceLog[]>('/maintenance/last-ordinary')
       const currentLogs = useAppStore.getState().maintenanceLogs
       const seen = new Set<string>()
-      for (const log of logData as MaintenanceLog[]) {
+      for (const log of logData) {
         if (!seen.has(log.vehicle_id)) {
           seen.add(log.vehicle_id)
           if (!currentLogs[log.vehicle_id] || currentLogs[log.vehicle_id].length === 0) {
@@ -43,40 +31,35 @@ export function useVehicles() {
           setMaintenanceLogs(v.id, [])
         }
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error')
+    } finally {
+      setLoading(false)
     }
-
-    setLoading(false)
   }, [setVehicles, setMaintenanceLogs])
 
   useEffect(() => { fetchVehicles() }, [fetchVehicles])
 
-  const createVehicle = async (payload: Partial<Vehicle>) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data, error } = await supabase
-      .from('vehicles')
-      .insert({ ...payload, user_id: user?.id })
-      .select()
-      .single()
-    if (error) throw error
+  const createVehicle = async (payload: Partial<Vehicle>): Promise<Vehicle> => {
+    const data = await api<Vehicle>('/vehicles', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
     setVehicles([data, ...vehicles])
-    return data as Vehicle
+    return data
   }
 
-  const updateVehicle = async (id: string, payload: Partial<Vehicle>) => {
-    const { data, error } = await supabase
-      .from('vehicles')
-      .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single()
-    if (error) throw error
-    setVehicles(vehicles.map((v) => (v.id === id ? (data as Vehicle) : v)))
-    return data as Vehicle
+  const updateVehicle = async (id: string, payload: Partial<Vehicle>): Promise<Vehicle> => {
+    const data = await api<Vehicle>(`/vehicles/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    })
+    setVehicles(vehicles.map((v) => (v.id === id ? data : v)))
+    return data
   }
 
-  const deleteVehicle = async (id: string) => {
-    const { error } = await supabase.from('vehicles').delete().eq('id', id)
-    if (error) throw error
+  const deleteVehicle = async (id: string): Promise<void> => {
+    await api(`/vehicles/${id}`, { method: 'DELETE' })
     removeVehicle(id)
   }
 

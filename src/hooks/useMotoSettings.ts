@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 import { useAppStore } from '../store'
 import type { MotoSettings, MotoSettingsHistory, SessionNote, Condition } from '../types'
 
@@ -14,37 +14,28 @@ export function useMotoSettings(vehicleId: string) {
   const fetchAll = useCallback(async () => {
     if (!vehicleId) return
     setLoading(true)
-    const [s, h, n] = await Promise.all([
-      supabase.from('moto_settings').select('*').eq('vehicle_id', vehicleId).single(),
-      supabase.from('moto_settings_history').select('*').eq('vehicle_id', vehicleId).order('date', { ascending: false }),
-      supabase.from('session_notes').select('*').eq('vehicle_id', vehicleId).order('date', { ascending: false }),
-    ])
-    if (s.data) setMotoSettings(vehicleId, s.data)
-    if (h.data) setMotoHistory(vehicleId, h.data)
-    if (n.data) setSessionNotes(vehicleId, n.data)
-    setLoading(false)
+    try {
+      const [s, h, n] = await Promise.allSettled([
+        api<MotoSettings>(`/vehicles/${vehicleId}/settings`),
+        api<MotoSettingsHistory[]>(`/vehicles/${vehicleId}/settings/history`),
+        api<SessionNote[]>(`/vehicles/${vehicleId}/sessions`),
+      ])
+      if (s.status === 'fulfilled') setMotoSettings(vehicleId, s.value)
+      if (h.status === 'fulfilled') setMotoHistory(vehicleId, h.value)
+      if (n.status === 'fulfilled') setSessionNotes(vehicleId, n.value)
+    } finally {
+      setLoading(false)
+    }
   }, [vehicleId, setMotoSettings, setMotoHistory, setSessionNotes])
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  const saveSettings = async (payload: Partial<MotoSettings>) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (settings) {
-      const { data, error } = await supabase
-        .from('moto_settings')
-        .update({ ...payload, updated_at: new Date().toISOString() })
-        .eq('vehicle_id', vehicleId)
-        .select().single()
-      if (error) throw error
-      setMotoSettings(vehicleId, data)
-    } else {
-      const { data, error } = await supabase
-        .from('moto_settings')
-        .insert({ ...payload, vehicle_id: vehicleId, user_id: user?.id })
-        .select().single()
-      if (error) throw error
-      setMotoSettings(vehicleId, data)
-    }
+  const saveSettings = async (payload: Partial<MotoSettings>): Promise<void> => {
+    const data = await api<MotoSettings>(`/vehicles/${vehicleId}/settings`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    })
+    setMotoSettings(vehicleId, data)
   }
 
   const saveSnapshotOf = async (
@@ -53,55 +44,49 @@ export function useMotoSettings(vehicleId: string) {
     condition: Condition = 'road',
     rating = 3,
     notes = ''
-  ) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data, error } = await supabase
-      .from('moto_settings_history')
-      .insert({
-        vehicle_id: vehicleId, user_id: user?.id,
-        label, condition, date: new Date().toISOString().split('T')[0],
-        feeling_rating: rating, notes,
-        main_jet: values.main_jet ?? null, pilot_jet: values.pilot_jet ?? null,
-        needle_clip: values.needle_clip ?? null, air_screw: values.air_screw ?? null,
-        fuel_mixture: values.fuel_mixture ?? null, fork_preload: values.fork_preload ?? null,
-        fork_compression: values.fork_compression ?? null, fork_rebound: values.fork_rebound ?? null,
-        fork_oil_level: values.fork_oil_level ?? null, fork_oil_type: values.fork_oil_type ?? null,
-        shock_preload: values.shock_preload ?? null,
-        shock_compression_high: values.shock_compression_high ?? null,
-        shock_compression_low: values.shock_compression_low ?? null,
-        shock_rebound: values.shock_rebound ?? null,
-      })
-      .select().single()
-    if (error) throw error
-    setMotoHistory(vehicleId, [data as MotoSettingsHistory, ...history])
-    return data as MotoSettingsHistory
+  ): Promise<MotoSettingsHistory> => {
+    const payload = {
+      label, condition, date: new Date().toISOString().split('T')[0],
+      feeling_rating: rating, notes,
+      main_jet: values.main_jet ?? null, pilot_jet: values.pilot_jet ?? null,
+      needle_clip: values.needle_clip ?? null, air_screw: values.air_screw ?? null,
+      fuel_mixture: values.fuel_mixture ?? null, fork_preload: values.fork_preload ?? null,
+      fork_compression: values.fork_compression ?? null, fork_rebound: values.fork_rebound ?? null,
+      fork_oil_level: values.fork_oil_level ?? null, fork_oil_type: values.fork_oil_type ?? null,
+      shock_preload: values.shock_preload ?? null,
+      shock_compression_high: values.shock_compression_high ?? null,
+      shock_compression_low: values.shock_compression_low ?? null,
+      shock_rebound: values.shock_rebound ?? null,
+    }
+    const data = await api<MotoSettingsHistory>(`/vehicles/${vehicleId}/settings/history`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    setMotoHistory(vehicleId, [data, ...history])
+    return data
   }
 
-  const saveSnapshot = async (label: string, condition: Condition, rating: number, notes: string) => {
+  const saveSnapshot = async (label: string, condition: Condition, rating: number, notes: string): Promise<MotoSettingsHistory> => {
     if (!settings) throw new Error('No settings to snapshot')
     return saveSnapshotOf(settings, label, condition, rating, notes)
   }
 
-  const deleteSnapshot = async (id: string) => {
-    const { error } = await supabase.from('moto_settings_history').delete().eq('id', id)
-    if (error) throw error
+  const deleteSnapshot = async (id: string): Promise<void> => {
+    await api(`/settings/history/${id}`, { method: 'DELETE' })
     setMotoHistory(vehicleId, history.filter((h) => h.id !== id))
   }
 
-  const createSession = async (payload: Partial<SessionNote>) => {
-    const { data: { user } } = await supabase.auth.getUser()
-    const { data, error } = await supabase
-      .from('session_notes')
-      .insert({ ...payload, vehicle_id: vehicleId, user_id: user?.id })
-      .select().single()
-    if (error) throw error
-    setSessionNotes(vehicleId, [data as SessionNote, ...sessions])
-    return data as SessionNote
+  const createSession = async (payload: Partial<SessionNote>): Promise<SessionNote> => {
+    const data = await api<SessionNote>(`/vehicles/${vehicleId}/sessions`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+    setSessionNotes(vehicleId, [data, ...sessions])
+    return data
   }
 
-  const deleteSession = async (id: string) => {
-    const { error } = await supabase.from('session_notes').delete().eq('id', id)
-    if (error) throw error
+  const deleteSession = async (id: string): Promise<void> => {
+    await api(`/sessions/${id}`, { method: 'DELETE' })
     setSessionNotes(vehicleId, sessions.filter((s) => s.id !== id))
   }
 

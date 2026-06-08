@@ -7,6 +7,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// userId is a plain String (not a FK relation) — intentional single-user design.
+// Auth is handled externally via JWT; there is no User table in this DB.
+// All routes hard-code userId = 'admin' after JWT verification.
+
 model Vehicle {
   id                       String    @id @default(uuid())
   userId                   String    @map("user_id")
@@ -23,7 +27,7 @@ model Vehicle {
   maintenanceIntervalHours Int?      @map("maintenance_interval_hours")
   currentKm                Int       @default(0) @map("current_km")
   currentHours             Decimal   @default(0) @map("current_hours") @db.Decimal(8, 2)
-  photoUrl                 String?   @map("photo_url")
+  photoUrl                 String?   @map("photo_url") @db.VarChar(500)
   notes                    String?   @db.Text
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
@@ -58,6 +62,8 @@ model MaintenanceLog {
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
+  @@index([vehicleId])
+  @@index([userId])
   @@map("maintenance_logs")
 }
 
@@ -84,6 +90,7 @@ model MotoSettings {
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
+  // vehicleId @unique already creates an implicit index — no @@index needed
   @@map("moto_settings")
 }
 
@@ -115,6 +122,8 @@ model MotoSettingsHistory {
   vehicle      Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   sessionNotes SessionNote[]
 
+  @@index([vehicleId])
+  @@index([userId])
   @@map("moto_settings_history")
 }
 
@@ -134,8 +143,10 @@ model SessionNote {
   createdAt     DateTime  @default(now()) @map("created_at")
 
   vehicle Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  setting MotoSettingsHistory? @relation(fields: [settingId], references: [id])
+  setting MotoSettingsHistory? @relation(fields: [settingId], references: [id], onDelete: SetNull)
 
+  @@index([vehicleId])
+  @@index([userId])
   @@map("session_notes")
 }
 
@@ -144,12 +155,14 @@ model VehicleDocument {
   vehicleId   String   @map("vehicle_id")
   userId      String   @map("user_id")
   name        String
-  storagePath String   @map("storage_path")
+  storagePath String   @map("storage_path") @db.VarChar(500)
   docType     String   @map("doc_type")
   fileSize    Int?     @map("file_size")
   createdAt   DateTime @default(now()) @map("created_at")
 
   vehicle Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
 
+  @@index([vehicleId])
+  @@index([userId])
   @@map("vehicle_documents")
 }

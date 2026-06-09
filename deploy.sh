@@ -11,7 +11,12 @@ npm run build
 cd server
 npm install
 npx prisma generate
-npx prisma migrate deploy
+# Run migrations only if any exist; otherwise the DB is managed via `prisma db push` (first deploy).
+if [ -d "prisma/migrations" ] && [ -n "$(ls -A prisma/migrations 2>/dev/null)" ]; then
+  npx prisma migrate deploy
+else
+  echo "No migrations dir -> skipping migrate deploy (schema managed via db push)"
+fi
 npm run build
 
 # Restart (start if not running)

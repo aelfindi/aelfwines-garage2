@@ -95,7 +95,7 @@ router.delete('/documents/:id', async (req, res) => {
 })
 
 // GET /api/documents/:id/download
-// Default: inline (opens in browser tab). Pass ?dl=1 to force download.
+// Default: inline for PDFs (opens in browser tab). ?dl=1 forces download. Non-PDF always downloads.
 router.get('/documents/:id/download', async (req, res) => {
   try {
     const doc = await prisma.vehicleDocument.findUnique({ where: { id: req.params.id } })
@@ -104,9 +104,15 @@ router.get('/documents/:id/download', async (req, res) => {
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found' }); return }
     const ext = path.extname(doc.storagePath).toLowerCase()
     const filename = `${doc.name}${ext}`
-    const disposition = req.query.dl === '1' ? 'attachment' : 'inline'
-    res.setHeader('Content-Type', ext === '.pdf' ? 'application/pdf' : 'application/octet-stream')
+    const isPdf = ext === '.pdf'
+    const wantsDownload = req.query.dl === '1'
+    // Only PDFs can render inline; everything else is forced to attachment to neutralize HTML/SVG/etc.
+    const disposition = isPdf && !wantsDownload ? 'inline' : 'attachment'
+    res.setHeader('Content-Type', isPdf ? 'application/pdf' : 'application/octet-stream')
     res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`)
+    res.setHeader('X-Content-Type-Options', 'nosniff')
+    // Sandbox isolates the response from the app origin so even a PDF with active content cannot reach our cookies/storage.
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox")
     res.sendFile(filePath)
   } catch (e) {
     console.error(e)

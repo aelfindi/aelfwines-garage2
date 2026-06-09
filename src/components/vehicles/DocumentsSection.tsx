@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { FileText, Trash2, Upload, ExternalLink } from 'lucide-react'
+import { FileText, Trash2, Upload, ExternalLink, Download } from 'lucide-react'
 import { useVehicleDocuments } from '../../hooks/useVehicleDocuments'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -115,15 +115,26 @@ export function DocumentsSection({ vehicleId }: { vehicleId: string }) {
               </div>
               <div className="flex items-center gap-1">
                 {doc.signed_url && (
-                  <a
-                    href={doc.signed_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1.5 rounded-lg hover:bg-garage-sand text-garage-steel"
-                    aria-label="Abrir"
-                  >
-                    <ExternalLink size={16} />
-                  </a>
+                  <>
+                    <a
+                      href={doc.signed_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg hover:bg-garage-sand text-garage-steel"
+                      aria-label="Abrir en nueva pestaña"
+                      title="Abrir"
+                    >
+                      <ExternalLink size={16} />
+                    </a>
+                    <a
+                      href={doc.signed_url + (doc.signed_url.includes('?') ? '&' : '?') + 'dl=1'}
+                      className="p-1.5 rounded-lg hover:bg-garage-sand text-garage-steel"
+                      aria-label="Descargar"
+                      title="Descargar"
+                    >
+                      <Download size={16} />
+                    </a>
+                  </>
                 )}
                 <button
                   onClick={() => handleDelete(doc.id, doc.name)}

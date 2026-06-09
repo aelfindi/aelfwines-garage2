@@ -95,13 +95,19 @@ router.delete('/documents/:id', async (req, res) => {
 })
 
 // GET /api/documents/:id/download
+// Default: inline (opens in browser tab). Pass ?dl=1 to force download.
 router.get('/documents/:id/download', async (req, res) => {
   try {
     const doc = await prisma.vehicleDocument.findUnique({ where: { id: req.params.id } })
     if (!doc) { res.status(404).json({ error: 'Not found' }); return }
     const filePath = path.join(uploadsBase, doc.storagePath)
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found' }); return }
-    res.download(filePath, `${doc.name}${path.extname(doc.storagePath)}`)
+    const ext = path.extname(doc.storagePath).toLowerCase()
+    const filename = `${doc.name}${ext}`
+    const disposition = req.query.dl === '1' ? 'attachment' : 'inline'
+    res.setHeader('Content-Type', ext === '.pdf' ? 'application/pdf' : 'application/octet-stream')
+    res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(filename)}"`)
+    res.sendFile(filePath)
   } catch (e) {
     console.error(e)
     res.status(500).json({ error: 'Server error' })

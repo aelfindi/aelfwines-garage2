@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import path from 'path'
 import { prisma } from './db'
 import { requireAuth } from './middleware/auth'
 import authRouter from './routes/auth'
@@ -26,6 +27,14 @@ app.use('/api', requireAuth, maintenanceRouter)
 app.use('/api', requireAuth, settingsRouter)
 app.use('/api', requireAuth, sessionsRouter)
 app.use('/api', requireAuth, documentsRouter)
+
+// 404 for unmatched API routes (before SPA fallback)
+app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }))
+
+// Serve frontend Vite build + SPA fallback
+const frontendDist = path.resolve(__dirname, '../../dist')
+app.use(express.static(frontendDist))
+app.get('*', (_req, res) => res.sendFile(path.join(frontendDist, 'index.html')))
 
 const PORT = Number(process.env.PORT ?? 3001)
 

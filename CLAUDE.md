@@ -8,7 +8,7 @@ Aplicacion web responsive (mobile-first) para el seguimiento de mantenimiento or
 
 ## Despliegue
 
-- **Repo GitHub**: `https://github.com/aelfindi/aelfwines-garage`
+- **Repo GitHub**: `https://github.com/aelfindi/aelfwines-garage2`
 - **Plataforma**: Vercel (auto-deploy desde `main`)
 - **Build command Vercel**: `npm run build` (script en package.json llama a `vite build`)
 - **Output dir**: `dist`

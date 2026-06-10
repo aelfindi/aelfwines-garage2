@@ -1,4 +1,4 @@
-import { Router } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
@@ -6,11 +6,31 @@ import { prisma } from '../db'
 
 const router = Router()
 
-const uploadsBase = process.env.UPLOADS_DIR
-  ? path.resolve(process.env.UPLOADS_DIR)
-  : path.join(__dirname, '..', 'uploads')
+const uploadsBase = path.resolve(
+  process.env.UPLOADS_DIR ?? path.join(__dirname, '..', 'uploads'),
+)
 
 type InvoiceKind = 'workshop' | 'parts'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Reject before multer runs so user input never reaches the filesystem path.
+function validateInvoiceParams(req: Request, res: Response, next: NextFunction): void {
+  if (!UUID_RE.test(req.params.id)) { res.status(400).json({ error: 'Invalid id' }); return }
+  if (req.params.kind !== 'workshop' && req.params.kind !== 'parts') {
+    res.status(400).json({ error: 'Invalid kind' })
+    return
+  }
+  next()
+}
+
+// Defense in depth: even with valid-looking params, refuse to operate outside uploadsBase.
+function assertInsideUploads(absolute: string): void {
+  const resolved = path.resolve(absolute)
+  if (resolved !== uploadsBase && !resolved.startsWith(uploadsBase + path.sep)) {
+    throw new Error('Path escapes uploads dir')
+  }
+}
 
 function invoiceField(kind: InvoiceKind): 'workshopInvoicePath' | 'partsInvoicePath' {
   return kind === 'workshop' ? 'workshopInvoicePath' : 'partsInvoicePath'
@@ -69,13 +89,17 @@ function toData(body: Record<string, unknown>) {
 
 const invoiceStorage = multer.diskStorage({
   destination: (req, _file, cb) => {
-    const dir = path.join(uploadsBase, 'maintenance', req.params.id)
-    fs.mkdirSync(dir, { recursive: true })
-    cb(null, dir)
+    try {
+      // params already validated by validateInvoiceParams middleware
+      const dir = path.join(uploadsBase, 'maintenance', req.params.id)
+      assertInsideUploads(dir)
+      fs.mkdirSync(dir, { recursive: true })
+      cb(null, dir)
+    } catch (e) { cb(e as Error, '') }
   },
   filename: (req, _file, cb) => {
-    const kind = req.params.kind as string
-    cb(null, `${kind}.pdf`)
+    // kind already validated to 'workshop' | 'parts'
+    cb(null, `${req.params.kind}.pdf`)
   },
 })
 const uploadInvoice = multer({ storage: invoiceStorage, limits: { fileSize: 50 * 1024 * 1024 } })
@@ -138,9 +162,11 @@ router.patch('/maintenance/:id', async (req, res) => {
 
 // DELETE /api/maintenance/:id - removes log + on-disk invoices
 router.delete('/maintenance/:id', async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) { res.status(400).json({ error: 'Invalid id' }); return }
   try {
     await prisma.maintenanceLog.delete({ where: { id: req.params.id } })
     const invoiceDir = path.join(uploadsBase, 'maintenance', req.params.id)
+    try { assertInsideUploads(invoiceDir) } catch { res.status(400).json({ error: 'Bad path' }); return }
     if (fs.existsSync(invoiceDir)) fs.rmSync(invoiceDir, { recursive: true, force: true })
     res.status(204).end()
   } catch (e) {
@@ -150,37 +176,35 @@ router.delete('/maintenance/:id', async (req, res) => {
 })
 
 // POST /api/maintenance/:id/invoice/:kind - upload an invoice PDF
-router.post('/maintenance/:id/invoice/:kind', uploadInvoice.single('file'), async (req, res) => {
-  const kind = req.params.kind as InvoiceKind
-  if (kind !== 'workshop' && kind !== 'parts') {
-    res.status(400).json({ error: 'Invalid kind' })
-    return
-  }
-  if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
-  try {
-    const relativePath = `maintenance/${req.params.id}/${kind}.pdf`
-    const log = await prisma.maintenanceLog.update({
-      where: { id: req.params.id },
-      data: { [invoiceField(kind)]: relativePath } as any,
-    })
-    res.json(toRes(log, req))
-  } catch (e) {
-    console.error(e)
-    res.status(500).json({ error: 'Server error' })
-  }
-})
+router.post(
+  '/maintenance/:id/invoice/:kind',
+  validateInvoiceParams,
+  uploadInvoice.single('file'),
+  async (req, res) => {
+    const kind = req.params.kind as InvoiceKind
+    if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
+    try {
+      const relativePath = `maintenance/${req.params.id}/${kind}.pdf`
+      const log = await prisma.maintenanceLog.update({
+        where: { id: req.params.id },
+        data: { [invoiceField(kind)]: relativePath } as any,
+      })
+      res.json(toRes(log, req))
+    } catch (e) {
+      console.error(e)
+      res.status(500).json({ error: 'Server error' })
+    }
+  },
+)
 
 // DELETE /api/maintenance/:id/invoice/:kind
-router.delete('/maintenance/:id/invoice/:kind', async (req, res) => {
+router.delete('/maintenance/:id/invoice/:kind', validateInvoiceParams, async (req, res) => {
   const kind = req.params.kind as InvoiceKind
-  if (kind !== 'workshop' && kind !== 'parts') {
-    res.status(400).json({ error: 'Invalid kind' })
-    return
-  }
   try {
     const log = await prisma.maintenanceLog.findUnique({ where: { id: req.params.id } })
     if (!log) { res.status(404).json({ error: 'Not found' }); return }
     const filePath = path.join(uploadsBase, 'maintenance', req.params.id, `${kind}.pdf`)
+    try { assertInsideUploads(filePath) } catch { res.status(400).json({ error: 'Bad path' }); return }
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
     const updated = await prisma.maintenanceLog.update({
       where: { id: req.params.id },
@@ -194,18 +218,15 @@ router.delete('/maintenance/:id/invoice/:kind', async (req, res) => {
 })
 
 // GET /api/maintenance/:id/invoice/:kind - serve PDF inline by default, ?dl=1 forces download
-router.get('/maintenance/:id/invoice/:kind', async (req, res) => {
+router.get('/maintenance/:id/invoice/:kind', validateInvoiceParams, async (req, res) => {
   const kind = req.params.kind as InvoiceKind
-  if (kind !== 'workshop' && kind !== 'parts') {
-    res.status(400).json({ error: 'Invalid kind' })
-    return
-  }
   try {
     const log = await prisma.maintenanceLog.findUnique({ where: { id: req.params.id } })
     if (!log) { res.status(404).json({ error: 'Not found' }); return }
     const storedPath = (log as any)[invoiceField(kind)] as string | null
     if (!storedPath) { res.status(404).json({ error: 'File not found' }); return }
     const filePath = path.join(uploadsBase, storedPath)
+    try { assertInsideUploads(filePath) } catch { res.status(400).json({ error: 'Bad path' }); return }
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found' }); return }
     const labelTitle = log.title?.replace(/[^\w\d -]/g, '_') ?? 'factura'
     const filename = `${labelTitle}-${kind === 'workshop' ? 'taller' : 'piezas'}.pdf`

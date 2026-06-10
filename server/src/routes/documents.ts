@@ -1,50 +1,70 @@
-import { Router } from 'express'
+import { Router, Request, Response, NextFunction } from 'express'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 import { prisma } from '../db'
+import { buildAbsoluteSignedUrl } from '../lib/signedUrl'
 
 const router = Router()
 
-const uploadsBase = process.env.UPLOADS_DIR
-  ? path.resolve(process.env.UPLOADS_DIR)
-  : path.join(__dirname, '..', 'uploads')
+const uploadsBase = path.resolve(
+  process.env.UPLOADS_DIR ?? path.join(__dirname, '..', 'uploads'),
+)
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function assertInsideUploads(absolute: string): void {
+  const resolved = path.resolve(absolute)
+  if (resolved !== uploadsBase && !resolved.startsWith(uploadsBase + path.sep)) {
+    throw new Error('Path escapes uploads dir')
+  }
+}
+
+function validateVehicleId(req: Request, res: Response, next: NextFunction): void {
+  if (!UUID_RE.test(req.params.vehicleId)) {
+    res.status(400).json({ error: 'Invalid vehicleId' })
+    return
+  }
+  next()
+}
+
+function validateDocId(req: Request, res: Response, next: NextFunction): void {
+  if (!UUID_RE.test(req.params.id)) {
+    res.status(400).json({ error: 'Invalid id' })
+    return
+  }
+  next()
+}
 
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
-    const dir = path.join(uploadsBase, req.params.vehicleId)
-    fs.mkdirSync(dir, { recursive: true })
-    cb(null, dir)
+    try {
+      const dir = path.join(uploadsBase, req.params.vehicleId)
+      assertInsideUploads(dir)
+      fs.mkdirSync(dir, { recursive: true })
+      cb(null, dir)
+    } catch (e) { cb(e as Error, '') }
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname)
-    cb(null, `${Date.now()}${ext}`)
+    const ext = path.extname(file.originalname).toLowerCase().replace(/[^.a-z0-9]/g, '')
+    cb(null, `${Date.now()}${ext || '.pdf'}`)
   },
 })
 
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } })
 
-function buildSignedUrl(docId: string, req: any): string {
-  const proto = req.headers['x-forwarded-proto'] ?? req.protocol
-  const host = req.headers['x-forwarded-host'] ?? req.get('host')
-  const base = `${proto}://${host}`
-  const token = (req.query.token as string) ??
-    req.headers.authorization?.replace('Bearer ', '') ?? ''
-  return `${base}/api/documents/${docId}/download?token=${token}`
-}
-
-function toRes(d: any, req: any) {
+function toRes(d: any, req: Request) {
   return {
     id: d.id, vehicle_id: d.vehicleId, user_id: d.userId,
     name: d.name, storage_path: d.storagePath,
     doc_type: d.docType, file_size: d.fileSize,
     created_at: d.createdAt.toISOString(),
-    signed_url: buildSignedUrl(d.id, req),
+    signed_url: buildAbsoluteSignedUrl(req, 'GET', `/api/documents/${d.id}/download`),
   }
 }
 
 // GET /api/vehicles/:vehicleId/documents
-router.get('/vehicles/:vehicleId/documents', async (req, res) => {
+router.get('/vehicles/:vehicleId/documents', validateVehicleId, async (req, res) => {
   try {
     const items = await prisma.vehicleDocument.findMany({
       where: { vehicleId: req.params.vehicleId },
@@ -58,33 +78,39 @@ router.get('/vehicles/:vehicleId/documents', async (req, res) => {
 })
 
 // POST /api/vehicles/:vehicleId/documents
-router.post('/vehicles/:vehicleId/documents', upload.single('file'), async (req, res) => {
-  if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
-  try {
-    const storagePath = `${req.params.vehicleId}/${req.file.filename}`
-    const doc = await prisma.vehicleDocument.create({
-      data: {
-        vehicleId: req.params.vehicleId,
-        userId: 'admin',
-        name: req.body.name ?? req.file.originalname,
-        storagePath,
-        docType: req.body.doc_type ?? 'manual',
-        fileSize: req.file.size,
-      },
-    })
-    res.status(201).json(toRes(doc, req))
-  } catch (e) {
-    console.error(e)
-    res.status(500).json({ error: 'Server error' })
-  }
-})
+router.post(
+  '/vehicles/:vehicleId/documents',
+  validateVehicleId,
+  upload.single('file'),
+  async (req, res) => {
+    if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
+    try {
+      const storagePath = `${req.params.vehicleId}/${req.file.filename}`
+      const doc = await prisma.vehicleDocument.create({
+        data: {
+          vehicleId: req.params.vehicleId,
+          userId: 'admin',
+          name: req.body.name ?? req.file.originalname,
+          storagePath,
+          docType: req.body.doc_type ?? 'manual',
+          fileSize: req.file.size,
+        },
+      })
+      res.status(201).json(toRes(doc, req))
+    } catch (e) {
+      console.error(e)
+      res.status(500).json({ error: 'Server error' })
+    }
+  },
+)
 
 // DELETE /api/documents/:id
-router.delete('/documents/:id', async (req, res) => {
+router.delete('/documents/:id', validateDocId, async (req, res) => {
   try {
     const doc = await prisma.vehicleDocument.findUnique({ where: { id: req.params.id } })
     if (!doc) { res.status(404).json({ error: 'Not found' }); return }
     const filePath = path.join(uploadsBase, doc.storagePath)
+    try { assertInsideUploads(filePath) } catch { res.status(400).json({ error: 'Bad path' }); return }
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
     await prisma.vehicleDocument.delete({ where: { id: req.params.id } })
     res.status(204).end()
@@ -96,11 +122,12 @@ router.delete('/documents/:id', async (req, res) => {
 
 // GET /api/documents/:id/download
 // Default: inline for PDFs (opens in browser tab). ?dl=1 forces download. Non-PDF always downloads.
-router.get('/documents/:id/download', async (req, res) => {
+router.get('/documents/:id/download', validateDocId, async (req, res) => {
   try {
     const doc = await prisma.vehicleDocument.findUnique({ where: { id: req.params.id } })
     if (!doc) { res.status(404).json({ error: 'Not found' }); return }
     const filePath = path.join(uploadsBase, doc.storagePath)
+    try { assertInsideUploads(filePath) } catch { res.status(400).json({ error: 'Bad path' }); return }
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found' }); return }
     const ext = path.extname(doc.storagePath).toLowerCase()
     const filename = `${doc.name}${ext}`

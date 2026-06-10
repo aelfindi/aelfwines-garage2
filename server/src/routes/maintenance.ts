@@ -3,6 +3,7 @@ import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 import { prisma } from '../db'
+import { buildAbsoluteSignedUrl } from '../lib/signedUrl'
 
 const router = Router()
 
@@ -36,12 +37,8 @@ function invoiceField(kind: InvoiceKind): 'workshopInvoicePath' | 'partsInvoiceP
   return kind === 'workshop' ? 'workshopInvoicePath' : 'partsInvoicePath'
 }
 
-function invoiceUrl(logId: string, kind: InvoiceKind, req: any): string {
-  const proto = req.headers['x-forwarded-proto'] ?? req.protocol
-  const host = req.headers['x-forwarded-host'] ?? req.get('host')
-  const token = (req.query.token as string) ??
-    req.headers.authorization?.replace('Bearer ', '') ?? ''
-  return `${proto}://${host}/api/maintenance/${logId}/invoice/${kind}?token=${token}`
+function invoiceUrl(logId: string, kind: InvoiceKind, req: Request): string {
+  return buildAbsoluteSignedUrl(req, 'GET', `/api/maintenance/${logId}/invoice/${kind}`)
 }
 
 function toRes(l: any, req?: any) {

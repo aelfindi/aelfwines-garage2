@@ -22,7 +22,7 @@ const storage = multer.diskStorage({
   },
 })
 
-const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } })
+const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } })
 
 function buildSignedUrl(docId: string, req: any): string {
   const proto = req.headers['x-forwarded-proto'] ?? req.protocol

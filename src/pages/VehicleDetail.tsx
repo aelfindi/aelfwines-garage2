@@ -17,7 +17,7 @@ import { DocumentsSection } from '../components/vehicles/DocumentsSection'
 import type { MaintenanceLog as MaintenanceLogType, Vehicle } from '../types'
 import toast from 'react-hot-toast'
 
-type Tab = 'summary' | 'ordinary' | 'extraordinary' | 'settings'
+type Tab = 'summary' | 'maintenance' | 'settings'
 
 export function VehicleDetail() {
   const { id } = useParams<{ id: string }>()
@@ -28,7 +28,10 @@ export function VehicleDetail() {
   const { updateVehicle } = useVehicles()
   const vehicles = useAppStore((s) => s.vehicles)
   const vehicle = vehicles.find((v) => v.id === id)
-  const { ordinaryLogs, extraordinaryLogs, lastOrdinary, loading, createLog, updateLog, deleteLog } = useMaintenance(id!)
+  const {
+    ordinaryLogs, extraordinaryLogs, lastOrdinary, loading,
+    createLog, updateLog, deleteLog, uploadInvoice, deleteInvoice,
+  } = useMaintenance(id!)
 
   const [editForm, setEditForm] = useState<Partial<Vehicle>>({})
 
@@ -82,13 +85,12 @@ export function VehicleDetail() {
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'summary', label: 'Resumen' },
-    { key: 'ordinary', label: 'Ordinario' },
-    { key: 'extraordinary', label: 'Extraordinario' },
+    { key: 'maintenance', label: 'Mantenimiento' },
     ...(isMoto ? [{ key: 'settings' as Tab, label: 'Setup' }] : []),
   ]
 
-  const handleAdd = async (payload: Partial<MaintenanceLogType>) => {
-    await createLog(payload)
+  const handleAdd = async (payload: Partial<MaintenanceLogType>): Promise<MaintenanceLogType> => {
+    const created = await createLog(payload)
     const updates: Partial<Vehicle> = {}
     if (payload.km_at_service && payload.km_at_service > vehicle.current_km)
       updates.current_km = payload.km_at_service
@@ -97,7 +99,7 @@ export function VehicleDetail() {
     if (Object.keys(updates).length > 0) {
       try { await updateVehicle(vehicle.id, updates) } catch { /* silent */ }
     }
-    toast.success('Registro anadido')
+    return created
   }
 
   return (
@@ -181,19 +183,13 @@ export function VehicleDetail() {
           </div>
         )}
 
-        {tab === 'ordinary' && (
+        {tab === 'maintenance' && (
           <MaintenanceLog
             vehicleId={id!} currentKm={vehicle.current_km} currentHours={vehicle.current_hours}
-            showHours={isMoto} logs={ordinaryLogs} type="ordinary"
+            showHours={isMoto}
+            ordinaryLogs={ordinaryLogs} extraordinaryLogs={extraordinaryLogs}
             onAdd={handleAdd} onUpdate={updateLog} onDelete={deleteLog}
-          />
-        )}
-
-        {tab === 'extraordinary' && (
-          <MaintenanceLog
-            vehicleId={id!} currentKm={vehicle.current_km} currentHours={vehicle.current_hours}
-            showHours={isMoto} logs={extraordinaryLogs} type="extraordinary"
-            onAdd={handleAdd} onUpdate={updateLog} onDelete={deleteLog}
+            onUploadInvoice={uploadInvoice} onDeleteInvoice={deleteInvoice}
           />
         )}
       </div>

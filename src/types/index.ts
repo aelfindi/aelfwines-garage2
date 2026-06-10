@@ -55,6 +55,8 @@ export interface MaintenanceLog {
   cost: number | null
   workshop: string | null
   parts_used: string | null
+  workshop_invoice_url: string | null
+  parts_invoice_url: string | null
   created_at: string
 }
 

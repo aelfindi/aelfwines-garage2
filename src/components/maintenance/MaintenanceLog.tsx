@@ -11,54 +11,95 @@ interface Props {
   currentKm: number
   currentHours: number
   showHours?: boolean
-  logs: MaintenanceLogType[]
-  type: 'ordinary' | 'extraordinary'
-  onAdd: (payload: Partial<MaintenanceLogType>) => Promise<void>
+  ordinaryLogs: MaintenanceLogType[]
+  extraordinaryLogs: MaintenanceLogType[]
+  onAdd: (payload: Partial<MaintenanceLogType>) => Promise<MaintenanceLogType | void>
   onUpdate: (id: string, payload: Partial<MaintenanceLogType>) => Promise<unknown>
   onDelete: (id: string) => Promise<void>
+  onUploadInvoice: (logId: string, kind: 'workshop' | 'parts', file: File) => Promise<MaintenanceLogType>
+  onDeleteInvoice: (logId: string, kind: 'workshop' | 'parts') => Promise<MaintenanceLogType>
 }
 
-export function MaintenanceLog({ vehicleId, currentKm, currentHours, showHours = true, logs, type, onAdd, onUpdate, onDelete }: Props) {
+export function MaintenanceLog({
+  vehicleId, currentKm, currentHours, showHours = true,
+  ordinaryLogs, extraordinaryLogs,
+  onAdd, onUpdate, onDelete, onUploadInvoice, onDeleteInvoice,
+}: Props) {
   const [adding, setAdding] = useState(false)
   const [editingLog, setEditingLog] = useState<MaintenanceLogType | null>(null)
 
-  const handleAdd = async (payload: Partial<MaintenanceLogType>) => {
-    await onAdd({ ...payload, type })
+  const handleAdd = async (payload: Partial<MaintenanceLogType>, files?: { workshop?: File | null; parts?: File | null }) => {
+    const log = await onAdd(payload)
+    if (log && files) {
+      if (files.workshop) await onUploadInvoice(log.id, 'workshop', files.workshop)
+      if (files.parts) await onUploadInvoice(log.id, 'parts', files.parts)
+    }
     setAdding(false)
   }
 
-  const handleUpdate = async (payload: Partial<MaintenanceLogType>) => {
+  const handleUpdate = async (payload: Partial<MaintenanceLogType>, files?: { workshop?: File | null; parts?: File | null }) => {
     if (!editingLog) return
     await onUpdate(editingLog.id, payload)
+    if (files) {
+      if (files.workshop) await onUploadInvoice(editingLog.id, 'workshop', files.workshop)
+      if (files.parts) await onUploadInvoice(editingLog.id, 'parts', files.parts)
+    }
     setEditingLog(null)
   }
 
   return (
     <>
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-display font-semibold text-base text-garage-dark">
-            {type === 'ordinary' ? 'Mantenimiento ordinario' : 'Mantenimiento extraordinario'}
-          </h3>
+      <div className="space-y-5">
+        <div className="flex items-center justify-end">
           <Button size="sm" onClick={() => setAdding(true)}>
-            <Plus size={16} /> Anadir
+            <Plus size={16} /> Anadir registro
           </Button>
         </div>
-        {logs.length === 0 ? (
-          <div className="text-center py-8 text-gray-400 text-sm">Sin registros aun</div>
-        ) : (
-          logs.map((log) => (
-            <MaintenanceItem
-              key={log.id}
-              log={log}
-              onEdit={setEditingLog}
-              onDelete={onDelete}
-            />
-          ))
-        )}
+
+        <section className="space-y-3">
+          <h3 className="font-display font-semibold text-base text-garage-dark">Mantenimiento ordinario</h3>
+          {ordinaryLogs.length === 0 ? (
+            <div className="text-center py-6 text-gray-400 text-xs bg-garage-cream rounded-xl border border-garage-sand">
+              Sin registros ordinarios
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {ordinaryLogs.map((log) => (
+                <MaintenanceItem
+                  key={log.id}
+                  log={log}
+                  onEdit={setEditingLog}
+                  onDelete={onDelete}
+                  onDeleteInvoice={onDeleteInvoice}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <h3 className="font-display font-semibold text-base text-garage-dark">Mantenimiento extraordinario</h3>
+          {extraordinaryLogs.length === 0 ? (
+            <div className="text-center py-6 text-gray-400 text-xs bg-garage-cream rounded-xl border border-garage-sand">
+              Sin registros extraordinarios
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {extraordinaryLogs.map((log) => (
+                <MaintenanceItem
+                  key={log.id}
+                  log={log}
+                  onEdit={setEditingLog}
+                  onDelete={onDelete}
+                  onDeleteInvoice={onDeleteInvoice}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
-      <Modal open={adding} onClose={() => setAdding(false)} title="Nuevo registro">
+      <Modal open={adding} onClose={() => setAdding(false)} title="Nuevo registro" size="lg">
         <MaintenanceForm
           vehicleId={vehicleId}
           currentKm={currentKm}
@@ -69,7 +110,7 @@ export function MaintenanceLog({ vehicleId, currentKm, currentHours, showHours =
         />
       </Modal>
 
-      <Modal open={!!editingLog} onClose={() => setEditingLog(null)} title="Editar registro">
+      <Modal open={!!editingLog} onClose={() => setEditingLog(null)} title="Editar registro" size="lg">
         {editingLog && (
           <MaintenanceForm
             vehicleId={vehicleId}
@@ -79,6 +120,7 @@ export function MaintenanceLog({ vehicleId, currentKm, currentHours, showHours =
             initialLog={editingLog}
             onSave={handleUpdate}
             onCancel={() => setEditingLog(null)}
+            onDeleteInvoice={(kind) => onDeleteInvoice(editingLog.id, kind)}
           />
         )}
       </Modal>

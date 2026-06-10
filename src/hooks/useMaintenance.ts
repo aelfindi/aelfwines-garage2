@@ -47,9 +47,40 @@ export function useMaintenance(vehicleId: string) {
     setMaintenanceLogs(vehicleId, logs.filter((l) => l.id !== id))
   }
 
+  const uploadInvoice = async (
+    logId: string,
+    kind: 'workshop' | 'parts',
+    file: File,
+  ): Promise<MaintenanceLog> => {
+    const fd = new FormData()
+    fd.append('file', file)
+    const data = await api<MaintenanceLog>(`/maintenance/${logId}/invoice/${kind}`, {
+      method: 'POST',
+      body: fd,
+    })
+    setMaintenanceLogs(vehicleId, logs.map((l) => (l.id === logId ? data : l)))
+    return data
+  }
+
+  const deleteInvoice = async (
+    logId: string,
+    kind: 'workshop' | 'parts',
+  ): Promise<MaintenanceLog> => {
+    const data = await api<MaintenanceLog>(`/maintenance/${logId}/invoice/${kind}`, {
+      method: 'DELETE',
+    })
+    setMaintenanceLogs(vehicleId, logs.map((l) => (l.id === logId ? data : l)))
+    return data
+  }
+
   const ordinaryLogs = logs.filter((l) => l.type === 'ordinary')
   const extraordinaryLogs = logs.filter((l) => l.type === 'extraordinary')
   const lastOrdinary = ordinaryLogs[0] ?? null
 
-  return { logs, ordinaryLogs, extraordinaryLogs, lastOrdinary, loading, error, fetchLogs, createLog, updateLog, deleteLog }
+  return {
+    logs, ordinaryLogs, extraordinaryLogs, lastOrdinary,
+    loading, error, fetchLogs,
+    createLog, updateLog, deleteLog,
+    uploadInvoice, deleteInvoice,
+  }
 }

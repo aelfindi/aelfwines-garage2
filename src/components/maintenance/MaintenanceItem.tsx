@@ -1,6 +1,6 @@
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import { Trash2, Pencil } from 'lucide-react'
+import { Trash2, Pencil, FileText, Download } from 'lucide-react'
 import { useState } from 'react'
 import type { MaintenanceLog } from '../../types'
 import { ORDINARY_CATEGORIES, EXTRAORDINARY_CATEGORIES, formatKm, formatCost } from '../../lib/helpers'
@@ -11,6 +11,7 @@ interface Props {
   log: MaintenanceLog
   onDelete?: (id: string) => Promise<void>
   onEdit?: (log: MaintenanceLog) => void
+  onDeleteInvoice?: (logId: string, kind: 'workshop' | 'parts') => Promise<unknown>
 }
 
 function getCategoryLabels(type: string, category: string) {
@@ -18,7 +19,7 @@ function getCategoryLabels(type: string, category: string) {
   return category.split(',').map((k) => list.find((c) => c.key === k.trim()) ?? { label: k.trim(), icon: '🔧' })
 }
 
-export function MaintenanceItem({ log, onDelete, onEdit }: Props) {
+export function MaintenanceItem({ log, onDelete, onEdit, onDeleteInvoice }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const cats = getCategoryLabels(log.type, log.category)
@@ -28,6 +29,11 @@ export function MaintenanceItem({ log, onDelete, onEdit }: Props) {
     setDeleting(true)
     try { await onDelete(log.id) } finally { setDeleting(false); setConfirmDelete(false) }
   }
+
+  const hasWorkshopInvoice = !!log.workshop_invoice_url
+  const hasPartsInvoice = !!log.parts_invoice_url
+
+  const downloadUrl = (base: string) => base + (base.includes('?') ? '&' : '?') + 'dl=1'
 
   return (
     <>
@@ -82,10 +88,79 @@ export function MaintenanceItem({ log, onDelete, onEdit }: Props) {
         )}
 
         {log.parts_used && <p className="text-xs text-gray-500">Piezas: {log.parts_used}</p>}
+
+        {(hasWorkshopInvoice || hasPartsInvoice) && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {hasWorkshopInvoice && (
+              <div className="flex items-center gap-1 bg-garage-cream border border-garage-sand rounded-lg pl-2 pr-1 py-1">
+                <FileText size={12} className="text-garage-steel" />
+                <a
+                  href={log.workshop_invoice_url!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-garage-steel font-body font-medium hover:underline"
+                  title="Abrir factura del taller"
+                >
+                  Factura taller
+                </a>
+                <a
+                  href={downloadUrl(log.workshop_invoice_url!)}
+                  className="p-1 rounded hover:bg-garage-sand text-gray-400 hover:text-garage-steel"
+                  title="Descargar"
+                  aria-label="Descargar factura taller"
+                >
+                  <Download size={12} />
+                </a>
+                {onDeleteInvoice && (
+                  <button
+                    onClick={() => onDeleteInvoice(log.id, 'workshop')}
+                    className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                    aria-label="Quitar factura taller"
+                    title="Quitar"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+            )}
+            {hasPartsInvoice && (
+              <div className="flex items-center gap-1 bg-garage-cream border border-garage-sand rounded-lg pl-2 pr-1 py-1">
+                <FileText size={12} className="text-garage-steel" />
+                <a
+                  href={log.parts_invoice_url!}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-garage-steel font-body font-medium hover:underline"
+                  title="Abrir factura de piezas"
+                >
+                  Factura piezas
+                </a>
+                <a
+                  href={downloadUrl(log.parts_invoice_url!)}
+                  className="p-1 rounded hover:bg-garage-sand text-gray-400 hover:text-garage-steel"
+                  title="Descargar"
+                  aria-label="Descargar factura piezas"
+                >
+                  <Download size={12} />
+                </a>
+                {onDeleteInvoice && (
+                  <button
+                    onClick={() => onDeleteInvoice(log.id, 'parts')}
+                    className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"
+                    aria-label="Quitar factura piezas"
+                    title="Quitar"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <Modal open={confirmDelete} onClose={() => setConfirmDelete(false)} title="Eliminar registro" size="sm">
-        <p className="text-sm text-gray-600 mb-4">Se eliminara este registro de mantenimiento.</p>
+        <p className="text-sm text-gray-600 mb-4">Se eliminara este registro de mantenimiento y sus facturas.</p>
         <div className="flex gap-3">
           <Button variant="ghost" className="flex-1" onClick={() => setConfirmDelete(false)}>Cancelar</Button>
           <Button variant="danger" className="flex-1" loading={deleting} onClick={handleDelete}>Eliminar</Button>

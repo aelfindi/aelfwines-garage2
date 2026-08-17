@@ -7,9 +7,19 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// userId is a plain String (not a FK relation) — intentional single-user design.
-// Auth is handled externally via JWT; there is no User table in this DB.
-// All routes hard-code userId = 'admin' after JWT verification.
+// Multi-user: each row's userId scopes it to a User. Ownership is enforced at the
+// route layer (server/src/routes/*.ts), not via DB constraints beyond the Vehicle FK.
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  vehicles Vehicle[]
+
+  @@map("users")
+}
 
 model Vehicle {
   id                       String    @id @default(uuid())

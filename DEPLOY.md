@@ -102,6 +102,21 @@ Guarda la password en tu gestor (1Password, Bitwarden, etc).
 
 ---
 
+## Añadir un nuevo usuario
+
+Desde `aelfwines-garage2` cada usuario tiene su propia cuenta con datos aislados (tabla `users` en Prisma). Para crear una cuenta nueva (p. ej. un beta tester) o resetear la password de una existente, como `aelfwine-garage`:
+
+```bash
+cd /home/aelfwine-garage/htdocs/garage.aelfwine.info/server
+npm run create-user -- friend@example.com "una-password-fuerte"
+```
+
+Es un upsert por email: si la cuenta no existe la crea, si existe le cambia la password. No hay UI de registro — las cuentas se crean siempre asi, desde el VPS.
+
+`ADMIN_EMAIL`/`ADMIN_PASSWORD_HASH` en `server/.env` ya no los lee `/api/auth/login` (que ahora consulta la tabla `users`) — quedaron solo como bootstrap, usados una vez por `scripts/backfill-admin-user.ts` durante la migracion a multi-usuario.
+
+---
+
 ## Backups de la base de datos
 
 Backup manual:

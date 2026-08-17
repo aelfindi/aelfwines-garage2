@@ -66,6 +66,8 @@ function toRes(d: any, req: Request) {
 // GET /api/vehicles/:vehicleId/documents
 router.get('/vehicles/:vehicleId/documents', validateVehicleId, async (req, res) => {
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const items = await prisma.vehicleDocument.findMany({
       where: { vehicleId: req.params.vehicleId },
       orderBy: { createdAt: 'desc' },
@@ -85,11 +87,13 @@ router.post(
   async (req, res) => {
     if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
     try {
+      const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+      if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
       const storagePath = `${req.params.vehicleId}/${req.file.filename}`
       const doc = await prisma.vehicleDocument.create({
         data: {
           vehicleId: req.params.vehicleId,
-          userId: 'admin',
+          userId: req.userId!,
           name: req.body.name ?? req.file.originalname,
           storagePath,
           docType: req.body.doc_type ?? 'manual',
@@ -107,7 +111,9 @@ router.post(
 // DELETE /api/documents/:id
 router.delete('/documents/:id', validateDocId, async (req, res) => {
   try {
-    const doc = await prisma.vehicleDocument.findUnique({ where: { id: req.params.id } })
+    const doc = await prisma.vehicleDocument.findFirst({
+      where: { id: req.params.id, vehicle: { userId: req.userId } },
+    })
     if (!doc) { res.status(404).json({ error: 'Not found' }); return }
     const filePath = path.join(uploadsBase, doc.storagePath)
     try { assertInsideUploads(filePath) } catch { res.status(400).json({ error: 'Bad path' }); return }
@@ -122,10 +128,18 @@ router.delete('/documents/:id', validateDocId, async (req, res) => {
 
 // GET /api/documents/:id/download
 // Default: inline for PDFs (opens in browser tab). ?dl=1 forces download. Non-PDF always downloads.
+// Reachable either via a normal Bearer token (req.userId set, ownership enforced below) or via
+// the HMAC signed-URL bypass (req.userId undefined - already authorized when the URL was minted).
 router.get('/documents/:id/download', validateDocId, async (req, res) => {
   try {
     const doc = await prisma.vehicleDocument.findUnique({ where: { id: req.params.id } })
     if (!doc) { res.status(404).json({ error: 'Not found' }); return }
+    if (req.userId) {
+      const owned = await prisma.vehicleDocument.findFirst({
+        where: { id: req.params.id, vehicle: { userId: req.userId } },
+      })
+      if (!owned) { res.status(404).json({ error: 'Not found' }); return }
+    }
     const filePath = path.join(uploadsBase, doc.storagePath)
     try { assertInsideUploads(filePath) } catch { res.status(400).json({ error: 'Bad path' }); return }
     if (!fs.existsSync(filePath)) { res.status(404).json({ error: 'File not found' }); return }

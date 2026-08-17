@@ -6,7 +6,8 @@
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "jest --forceExit"
+    "test": "jest --forceExit",
+    "create-user": "ts-node scripts/create-user.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -29,6 +30,7 @@
     "prisma": "^5.22.0",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.3"
   }

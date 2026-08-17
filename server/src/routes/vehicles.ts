@@ -44,9 +44,12 @@ function toData(body: Record<string, unknown>) {
   return data
 }
 
-router.get('/', async (_req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const items = await prisma.vehicle.findMany({ orderBy: { createdAt: 'desc' } })
+    const items = await prisma.vehicle.findMany({
+      where: { userId: req.userId },
+      orderBy: { createdAt: 'desc' },
+    })
     res.json(items.map(toRes))
   } catch (e) {
     console.error(e)
@@ -57,7 +60,7 @@ router.get('/', async (_req, res) => {
 router.post('/', async (req, res) => {
   try {
     const item = await prisma.vehicle.create({
-      data: { ...toData(req.body), userId: 'admin' } as any,
+      data: { ...toData(req.body), userId: req.userId! } as any,
     })
     res.status(201).json(toRes(item))
   } catch (e) {
@@ -68,6 +71,8 @@ router.post('/', async (req, res) => {
 
 router.patch('/:id', async (req, res) => {
   try {
+    const owned = await prisma.vehicle.findFirst({ where: { id: req.params.id, userId: req.userId } })
+    if (!owned) { res.status(404).json({ error: 'Not found' }); return }
     const item = await prisma.vehicle.update({
       where: { id: req.params.id },
       data: toData(req.body) as any,
@@ -81,6 +86,8 @@ router.patch('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    const owned = await prisma.vehicle.findFirst({ where: { id: req.params.id, userId: req.userId } })
+    if (!owned) { res.status(404).json({ error: 'Not found' }); return }
     await prisma.vehicle.delete({ where: { id: req.params.id } })
     res.status(204).end()
   } catch (e) {

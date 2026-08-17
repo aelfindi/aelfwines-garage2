@@ -71,6 +71,8 @@ function historyToRes(h: any) {
 // GET /api/vehicles/:vehicleId/settings
 router.get('/vehicles/:vehicleId/settings', async (req, res) => {
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const s = await prisma.motoSettings.findUnique({ where: { vehicleId: req.params.vehicleId } })
     if (!s) { res.status(404).json({ error: 'Not found' }); return }
     res.json(settingsToRes(s))
@@ -85,9 +87,11 @@ router.put('/vehicles/:vehicleId/settings', async (req, res) => {
   const { vehicleId } = req.params
   const data = settingsToData(req.body)
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const s = await prisma.motoSettings.upsert({
       where: { vehicleId },
-      create: { ...data, vehicleId, userId: 'admin' } as any,
+      create: { ...data, vehicleId, userId: req.userId! } as any,
       update: data as any,
     })
     res.json(settingsToRes(s))
@@ -100,6 +104,8 @@ router.put('/vehicles/:vehicleId/settings', async (req, res) => {
 // GET /api/vehicles/:vehicleId/settings/history
 router.get('/vehicles/:vehicleId/settings/history', async (req, res) => {
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const items = await prisma.motoSettingsHistory.findMany({
       where: { vehicleId: req.params.vehicleId },
       orderBy: { date: 'desc' },
@@ -114,8 +120,10 @@ router.get('/vehicles/:vehicleId/settings/history', async (req, res) => {
 // POST /api/vehicles/:vehicleId/settings/history
 router.post('/vehicles/:vehicleId/settings/history', async (req, res) => {
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const item = await prisma.motoSettingsHistory.create({
-      data: { ...historyToData(req.body), vehicleId: req.params.vehicleId, userId: 'admin' } as any,
+      data: { ...historyToData(req.body), vehicleId: req.params.vehicleId, userId: req.userId! } as any,
     })
     res.status(201).json(historyToRes(item))
   } catch (e) {
@@ -127,6 +135,10 @@ router.post('/vehicles/:vehicleId/settings/history', async (req, res) => {
 // DELETE /api/settings/history/:id
 router.delete('/settings/history/:id', async (req, res) => {
   try {
+    const owned = await prisma.motoSettingsHistory.findFirst({
+      where: { id: req.params.id, vehicle: { userId: req.userId } },
+    })
+    if (!owned) { res.status(404).json({ error: 'Not found' }); return }
     await prisma.motoSettingsHistory.delete({ where: { id: req.params.id } })
     res.status(204).end()
   } catch (e) {

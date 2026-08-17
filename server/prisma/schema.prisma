@@ -24,6 +24,7 @@ model User {
 model Vehicle {
   id                       String    @id @default(uuid())
   userId                   String    @map("user_id")
+  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                     String
   type                     String
   brand                    String?
@@ -48,13 +49,14 @@ model Vehicle {
   sessionNotes        SessionNote[]
   documents           VehicleDocument[]
 
+  @@index([userId])
   @@map("vehicles")
 }
 
 model MaintenanceLog {
   id               String    @id @default(uuid())
   vehicleId        String    @map("vehicle_id")
-  userId           String    @map("user_id")
+  userId           String    @map("user_id") // legacy/denormalized - never use for authorization, always join via vehicle.userId
   type             String
   category         String
   title            String
@@ -82,7 +84,7 @@ model MaintenanceLog {
 model MotoSettings {
   id                   String   @id @default(uuid())
   vehicleId            String   @unique @map("vehicle_id")
-  userId               String   @map("user_id")
+  userId               String   @map("user_id") // legacy/denormalized - never use for authorization, always join via vehicle.userId
   mainJet              String?  @map("main_jet")
   pilotJet             String?  @map("pilot_jet")
   needleClip           Int?     @map("needle_clip")
@@ -109,7 +111,7 @@ model MotoSettings {
 model MotoSettingsHistory {
   id                   String    @id @default(uuid())
   vehicleId            String    @map("vehicle_id")
-  userId               String    @map("user_id")
+  userId               String    @map("user_id") // legacy/denormalized - never use for authorization, always join via vehicle.userId
   label                String
   date                 DateTime  @db.Date
   condition            String
@@ -142,7 +144,7 @@ model MotoSettingsHistory {
 model SessionNote {
   id            String    @id @default(uuid())
   vehicleId     String    @map("vehicle_id")
-  userId        String    @map("user_id")
+  userId        String    @map("user_id") // legacy/denormalized - never use for authorization, always join via vehicle.userId
   date          DateTime  @db.Date
   location      String?
   condition     String
@@ -165,7 +167,7 @@ model SessionNote {
 model VehicleDocument {
   id          String   @id @default(uuid())
   vehicleId   String   @map("vehicle_id")
-  userId      String   @map("user_id")
+  userId      String   @map("user_id") // legacy/denormalized - never use for authorization, always join via vehicle.userId
   name        String
   storagePath String   @map("storage_path") @db.VarChar(500)
   docType     String   @map("doc_type")

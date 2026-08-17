@@ -101,11 +101,11 @@ const invoiceStorage = multer.diskStorage({
 })
 const uploadInvoice = multer({ storage: invoiceStorage, limits: { fileSize: 50 * 1024 * 1024 } })
 
-// GET /api/maintenance/last-ordinary - last ordinary log per vehicle
+// GET /api/maintenance/last-ordinary - last ordinary log per vehicle (caller's vehicles only)
 router.get('/maintenance/last-ordinary', async (req, res) => {
   try {
     const logs = await prisma.maintenanceLog.findMany({
-      where: { type: 'ordinary' },
+      where: { type: 'ordinary', vehicle: { userId: req.userId } },
       orderBy: { date: 'desc' },
       distinct: ['vehicleId'],
     })
@@ -119,6 +119,8 @@ router.get('/maintenance/last-ordinary', async (req, res) => {
 // GET /api/vehicles/:vehicleId/maintenance
 router.get('/vehicles/:vehicleId/maintenance', async (req, res) => {
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const logs = await prisma.maintenanceLog.findMany({
       where: { vehicleId: req.params.vehicleId },
       orderBy: { date: 'desc' },
@@ -133,8 +135,10 @@ router.get('/vehicles/:vehicleId/maintenance', async (req, res) => {
 // POST /api/vehicles/:vehicleId/maintenance
 router.post('/vehicles/:vehicleId/maintenance', async (req, res) => {
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const log = await prisma.maintenanceLog.create({
-      data: { ...toData(req.body), vehicleId: req.params.vehicleId, userId: 'admin' } as any,
+      data: { ...toData(req.body), vehicleId: req.params.vehicleId, userId: req.userId! } as any,
     })
     res.status(201).json(toRes(log, req))
   } catch (e) {
@@ -146,6 +150,10 @@ router.post('/vehicles/:vehicleId/maintenance', async (req, res) => {
 // PATCH /api/maintenance/:id
 router.patch('/maintenance/:id', async (req, res) => {
   try {
+    const owned = await prisma.maintenanceLog.findFirst({
+      where: { id: req.params.id, vehicle: { userId: req.userId } },
+    })
+    if (!owned) { res.status(404).json({ error: 'Not found' }); return }
     const log = await prisma.maintenanceLog.update({
       where: { id: req.params.id },
       data: toData(req.body) as any,
@@ -161,6 +169,10 @@ router.patch('/maintenance/:id', async (req, res) => {
 router.delete('/maintenance/:id', async (req, res) => {
   if (!UUID_RE.test(req.params.id)) { res.status(400).json({ error: 'Invalid id' }); return }
   try {
+    const owned = await prisma.maintenanceLog.findFirst({
+      where: { id: req.params.id, vehicle: { userId: req.userId } },
+    })
+    if (!owned) { res.status(404).json({ error: 'Not found' }); return }
     await prisma.maintenanceLog.delete({ where: { id: req.params.id } })
     const invoiceDir = path.join(uploadsBase, 'maintenance', req.params.id)
     try { assertInsideUploads(invoiceDir) } catch { res.status(400).json({ error: 'Bad path' }); return }
@@ -181,6 +193,10 @@ router.post(
     const kind = req.params.kind as InvoiceKind
     if (!req.file) { res.status(400).json({ error: 'No file uploaded' }); return }
     try {
+      const owned = await prisma.maintenanceLog.findFirst({
+        where: { id: req.params.id, vehicle: { userId: req.userId } },
+      })
+      if (!owned) { res.status(404).json({ error: 'Not found' }); return }
       const relativePath = `maintenance/${req.params.id}/${kind}.pdf`
       const log = await prisma.maintenanceLog.update({
         where: { id: req.params.id },
@@ -198,7 +214,9 @@ router.post(
 router.delete('/maintenance/:id/invoice/:kind', validateInvoiceParams, async (req, res) => {
   const kind = req.params.kind as InvoiceKind
   try {
-    const log = await prisma.maintenanceLog.findUnique({ where: { id: req.params.id } })
+    const log = await prisma.maintenanceLog.findFirst({
+      where: { id: req.params.id, vehicle: { userId: req.userId } },
+    })
     if (!log) { res.status(404).json({ error: 'Not found' }); return }
     const filePath = path.join(uploadsBase, 'maintenance', req.params.id, `${kind}.pdf`)
     try { assertInsideUploads(filePath) } catch { res.status(400).json({ error: 'Bad path' }); return }
@@ -214,12 +232,20 @@ router.delete('/maintenance/:id/invoice/:kind', validateInvoiceParams, async (re
   }
 })
 
-// GET /api/maintenance/:id/invoice/:kind - serve PDF inline by default, ?dl=1 forces download
+// GET /api/maintenance/:id/invoice/:kind - serve PDF inline by default, ?dl=1 forces download.
+// Reachable either via a normal Bearer token (req.userId set, ownership enforced below) or via
+// the HMAC signed-URL bypass (req.userId undefined - already authorized when the URL was minted).
 router.get('/maintenance/:id/invoice/:kind', validateInvoiceParams, async (req, res) => {
   const kind = req.params.kind as InvoiceKind
   try {
     const log = await prisma.maintenanceLog.findUnique({ where: { id: req.params.id } })
     if (!log) { res.status(404).json({ error: 'Not found' }); return }
+    if (req.userId) {
+      const owned = await prisma.maintenanceLog.findFirst({
+        where: { id: req.params.id, vehicle: { userId: req.userId } },
+      })
+      if (!owned) { res.status(404).json({ error: 'Not found' }); return }
+    }
     const storedPath = (log as any)[invoiceField(kind)] as string | null
     if (!storedPath) { res.status(404).json({ error: 'File not found' }); return }
     const filePath = path.join(uploadsBase, storedPath)

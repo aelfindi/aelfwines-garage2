@@ -32,6 +32,8 @@ function toData(body: Record<string, unknown>) {
 // GET /api/vehicles/:vehicleId/sessions
 router.get('/vehicles/:vehicleId/sessions', async (req, res) => {
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const items = await prisma.sessionNote.findMany({
       where: { vehicleId: req.params.vehicleId },
       orderBy: { date: 'desc' },
@@ -46,8 +48,10 @@ router.get('/vehicles/:vehicleId/sessions', async (req, res) => {
 // POST /api/vehicles/:vehicleId/sessions
 router.post('/vehicles/:vehicleId/sessions', async (req, res) => {
   try {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: req.params.vehicleId, userId: req.userId } })
+    if (!vehicle) { res.status(404).json({ error: 'Not found' }); return }
     const item = await prisma.sessionNote.create({
-      data: { ...toData(req.body), vehicleId: req.params.vehicleId, userId: 'admin' } as any,
+      data: { ...toData(req.body), vehicleId: req.params.vehicleId, userId: req.userId! } as any,
     })
     res.status(201).json(toRes(item))
   } catch (e) {
@@ -59,6 +63,10 @@ router.post('/vehicles/:vehicleId/sessions', async (req, res) => {
 // DELETE /api/sessions/:id
 router.delete('/sessions/:id', async (req, res) => {
   try {
+    const owned = await prisma.sessionNote.findFirst({
+      where: { id: req.params.id, vehicle: { userId: req.userId } },
+    })
+    if (!owned) { res.status(404).json({ error: 'Not found' }); return }
     await prisma.sessionNote.delete({ where: { id: req.params.id } })
     res.status(204).end()
   } catch (e) {

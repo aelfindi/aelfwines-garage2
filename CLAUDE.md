@@ -2,17 +2,18 @@
 
 ## Vision general del proyecto
 
-Aplicacion web responsive (mobile-first) para el seguimiento de mantenimiento ordinario y extraordinario de vehiculos. Alojada en **Supabase** (base de datos + auth) y desplegada en **Vercel**. Nombre de la app: **Aelfwine's Garage**.
+Aplicacion web responsive (mobile-first) para el seguimiento de mantenimiento ordinario y extraordinario de vehiculos. Self-hosted en un VPS propio (Express + Prisma + MySQL), multi-usuario con datos aislados por cuenta (admin + beta testers). Nombre de la app: **Aelfwine's Garage**.
 
 ---
 
 ## Despliegue
 
 - **Repo GitHub**: `https://github.com/aelfindi/aelfwines-garage2`
-- **Plataforma**: Vercel (auto-deploy desde `main`)
-- **Build command Vercel**: `npm run build` (script en package.json llama a `vite build`)
-- **Output dir**: `dist`
-- **SPA rewrite**: `vercel.json` redirige todas las rutas a `index.html`
+- **URL produccion**: `https://garage.aelfwine.eu` (dominio real, cert Let's Encrypt, desde 2026-08-18)
+- **Plataforma**: VPS propio (Ubuntu 24.04, CloudPanel), sin Vercel/Supabase
+- **Deploy**: `git pull origin main` en el VPS + `./deploy.sh` (ver `DEPLOY.md` para el runbook completo: acceso SSH, PM2, backups, dominio, troubleshooting)
+- **Proceso**: PM2 (`garage-api`), Express en `127.0.0.1:3002` (cerrado al exterior, solo accesible por el reverse-proxy)
+- **Web server**: Nginx (gestionado por CloudPanel) sirve `dist/` y proxea `/api` a Express. El sitio de `garage.aelfwine.eu` es un vhost reverse-proxy separado del codigo — este no vive en una carpeta con ese nombre, sigue en `garage.aelfwine.info/` (nombre legacy de un dominio que nunca funciono, ver `DEPLOY.md`)
 
 ---
 
@@ -20,8 +21,10 @@ Aplicacion web responsive (mobile-first) para el seguimiento de mantenimiento or
 
 - **Frontend**: React 18 + Vite 5 + TypeScript
 - **Estilos**: Tailwind CSS v3
-- **Backend / DB**: Supabase (PostgreSQL + Row Level Security)
-- **Auth**: Supabase Auth (email/password)
+- **Backend**: Node.js + Express 4 + TypeScript (`server/`)
+- **ORM / DB**: Prisma 5 + MySQL/MariaDB (self-hosted, sin RLS — el aislamiento por usuario se aplica a nivel de ruta, no de base de datos)
+- **Auth**: JWT + bcrypt, multi-usuario real (tabla `User`: `email` + `passwordHash`). El JWT lleva el `id` del usuario; `middleware/auth.ts` lo adjunta a `req.userId` y cada ruta filtra/verifica ownership con eso. No hay UI de registro — las cuentas se crean desde el VPS con `npm run create-user -- email password` (ver `DEPLOY.md`)
+- **Uploads**: disco local del VPS (`server/uploads/`), servidos exclusivamente via Express con rutas firmadas (HMAC) — nunca expuestos directo por Nginx
 - **Routing**: React Router v6
 - **State**: Zustand
 - **Fechas**: date-fns
@@ -35,15 +38,25 @@ Aplicacion web responsive (mobile-first) para el seguimiento de mantenimiento or
 
 ## Variables de entorno
 
+Frontend (`.env`):
 ```env
-VITE_SUPABASE_URL=https://rnymkxubwmuoprwmnakk.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_wpP2fjn58bdpco9X38HBHw_1a_HQVnJ
+VITE_API_URL=https://garage.aelfwine.eu/api
 # Opcionales - solo para busqueda de imagenes de vehiculos
 VITE_GOOGLE_CSE_API_KEY=
 VITE_GOOGLE_CSE_CX=
 ```
 
-Estas mismas variables deben estar configuradas en Vercel → Project → Settings → Environment Variables.
+Backend (`server/.env`):
+```env
+DATABASE_URL=mysql://user:pass@127.0.0.1:3306/aelfwinesGarage
+JWT_SECRET=<cadena aleatoria larga>
+ADMIN_EMAIL=fabio@indissoluble.com
+ADMIN_PASSWORD_HASH=<bcrypt hash>
+UPLOADS_DIR=./uploads
+PORT=3002
+CORS_ORIGIN=https://garage.aelfwine.eu
+```
+`ADMIN_EMAIL`/`ADMIN_PASSWORD_HASH` ya **no** los lee `/api/auth/login` (que ahora consulta la tabla `users`) — quedaron solo como bootstrap, usados una vez por `server/scripts/backfill-admin-user.ts` durante la migracion a multi-usuario.
 
 ---
 
@@ -95,13 +108,13 @@ src/
 │   └── ui/              # Button, Input, Modal, Badge, Spinner, IntervalCalc
 ├── pages/
 │   ├── Home.tsx                    # Lista de vehiculos agrupada por tipo
-│   ├── VehicleDetail.tsx           # Tabs: Resumen / Ordinario / Extraordinario / Setup
+│   ├── VehicleDetail.tsx           # Tabs: Resumen / Mantenimiento / Setup
 │   ├── AddVehicle.tsx              # Stepper 3 pasos
 │   ├── MotoSettings.tsx            # Settings activos + historial + comparador
 │   ├── SessionNotes.tsx            # Notas de sesion (solo motos)
 │   └── Settings.tsx                # Login / logout / cuenta
 ├── lib/
-│   ├── supabase.ts      # Cliente Supabase
+│   ├── api.ts           # Cliente fetch: JWT desde localStorage, Authorization header
 │   └── helpers.ts       # getMaintenanceStatus, diffSettings, formatKm, categorias
 ├── hooks/
 │   ├── useVehicles.ts
@@ -112,181 +125,61 @@ src/
 │   └── index.ts
 └── store/
     └── index.ts         # Zustand: vehicles, maintenanceLogs, user
+
+server/
+├── src/
+│   ├── index.ts          # Entry point Express, puerto 3002, sirve dist/ + SPA fallback
+│   ├── db.ts              # PrismaClient
+│   ├── types/express.d.ts # Augmenta Request con `userId?: string`
+│   ├── lib/signedUrl.ts   # HMAC signing para URLs de descarga de PDFs
+│   ├── middleware/auth.ts # Verifica JWT (header Bearer), adjunta req.userId
+│   ├── routes/
+│   │   ├── auth.ts        # POST /api/auth/login (contra tabla users)
+│   │   ├── vehicles.ts    # CRUD /api/vehicles, filtrado por req.userId
+│   │   ├── maintenance.ts # CRUD /api/vehicles/:id/maintenance + facturas (invoice)
+│   │   ├── settings.ts    # /api/vehicles/:id/settings + historial
+│   │   ├── sessions.ts    # /api/vehicles/:id/sessions
+│   │   └── documents.ts   # Upload/descarga manuales y listas de piezas (PDF)
+│   └── uploads/           # PDFs en disco (gitignored)
+├── scripts/
+│   ├── create-user.ts           # Upsert-by-email: crear cuenta o resetear password
+│   └── backfill-admin-user.ts   # One-off: migracion a multi-usuario (ya ejecutado)
+└── prisma/
+    ├── schema.prisma
+    └── migrations/
 ```
 
 ---
 
-## Esquema de base de datos Supabase
+## Esquema de base de datos (Prisma / MySQL)
 
-### Tabla `vehicles`
-```sql
-CREATE TABLE vehicles (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id       UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  name          TEXT NOT NULL,
-  type          TEXT NOT NULL CHECK (type IN ('car', 'moto', 'van', 'truck', 'other')),
-  brand         TEXT,
-  model         TEXT NOT NULL,
-  year          INT,
-  license_plate TEXT,
-  engine        TEXT,
-  oil_type      TEXT,
-  oil_quantity  NUMERIC(4,2),
-  maintenance_interval_km    INT,
-  maintenance_interval_hours INT,          -- HORAS (no dias)
-  current_km    INT DEFAULT 0,
-  current_hours NUMERIC(8,2) DEFAULT 0,
-  photo_url     TEXT,
-  notes         TEXT,
-  created_at    TIMESTAMPTZ DEFAULT now(),
-  updated_at    TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE vehicles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users see own vehicles" ON vehicles FOR ALL USING (auth.uid() = user_id);
-```
+Multi-usuario, sin RLS: el aislamiento se aplica en la capa de rutas (`server/src/routes/*.ts`), no en la base de datos. Ver `server/prisma/schema.prisma` para el esquema completo.
 
-> MIGRACION pendiente si la tabla ya existe con el nombre antiguo:
-> `ALTER TABLE vehicles RENAME COLUMN maintenance_interval_days TO maintenance_interval_hours;`
+| Modelo Prisma | Tabla MySQL | Notas |
+|---|---|---|
+| `User` | `users` | `id`, `email` (unico), `passwordHash`, `createdAt`. Sin UI de registro. |
+| `Vehicle` | `vehicles` | `userId` es FK real a `User` (`onDelete: Cascade`) — unica tabla con la relacion autoritativa |
+| `MaintenanceLog` | `maintenance_logs` | + `workshopInvoicePath` / `partsInvoicePath` (facturas PDF adjuntas) |
+| `MotoSettings` | `moto_settings` | igual |
+| `MotoSettingsHistory` | `moto_settings_history` | igual |
+| `SessionNote` | `session_notes` | igual |
+| `VehicleDocument` | `vehicle_documents` | manuales / listas de piezas |
 
-### Tabla `maintenance_logs`
-```sql
-CREATE TABLE maintenance_logs (
-  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vehicle_id       UUID REFERENCES vehicles(id) ON DELETE CASCADE,
-  user_id          UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  type             TEXT NOT NULL CHECK (type IN ('ordinary', 'extraordinary')),
-  category         TEXT NOT NULL,
-  title            TEXT NOT NULL,
-  description      TEXT,
-  date             DATE NOT NULL,
-  km_at_service    INT,
-  hours_at_service NUMERIC(8,2),
-  next_service_km  INT,
-  next_service_hours NUMERIC(8,2),        -- HORAS para proximo servicio
-  next_service_date DATE,
-  cost             NUMERIC(10,2),
-  workshop         TEXT,
-  parts_used       TEXT,
-  created_at       TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE maintenance_logs ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users see own logs" ON maintenance_logs FOR ALL USING (auth.uid() = user_id);
-```
+**Ownership**: solo `Vehicle.userId` es la FK autoritativa. Las otras 5 tablas ya relacionan con `Vehicle` via `vehicleId` (todas con `onDelete: Cascade`), asi que las rutas verifican pertenencia uniendo por `vehicle.userId` (ej. `findFirst({where: {id, vehicle: {userId: req.userId}}})`) en vez de anadir FK a `User` en cada tabla. La columna `userId` propia de esas 5 tablas queda como dato denormalizado/legacy (comentario en el schema) — **nunca usarla para autorizar**.
 
-> MIGRACION si la tabla ya existe:
-> `ALTER TABLE maintenance_logs ADD COLUMN next_service_hours NUMERIC(8,2);`
-
-### Tabla `moto_settings`
-```sql
-CREATE TABLE moto_settings (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vehicle_id          UUID REFERENCES vehicles(id) ON DELETE CASCADE UNIQUE,
-  user_id             UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  main_jet            TEXT,
-  pilot_jet           TEXT,
-  needle_clip         INT,
-  air_screw           NUMERIC(4,2),
-  fuel_mixture        TEXT,
-  fork_preload        INT,
-  fork_compression    INT,
-  fork_rebound        INT,
-  fork_oil_level      INT,
-  fork_oil_type       TEXT,
-  shock_preload       INT,
-  shock_compression_high INT,
-  shock_compression_low  INT,
-  shock_rebound       INT,
-  setting_notes       TEXT,
-  updated_at          TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE moto_settings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users see own settings" ON moto_settings FOR ALL USING (auth.uid() = user_id);
-```
-
-### Tabla `moto_settings_history`
-```sql
-CREATE TABLE moto_settings_history (
-  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vehicle_id          UUID REFERENCES vehicles(id) ON DELETE CASCADE,
-  user_id             UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  label               TEXT NOT NULL,
-  date                DATE NOT NULL,
-  condition           TEXT NOT NULL CHECK (condition IN ('track_dry', 'track_wet', 'road', 'offroad', 'rain', 'other')),
-  main_jet            TEXT,
-  pilot_jet           TEXT,
-  needle_clip         INT,
-  air_screw           NUMERIC(4,2),
-  fuel_mixture        TEXT,
-  fork_preload        INT,
-  fork_compression    INT,
-  fork_rebound        INT,
-  fork_oil_level      INT,
-  fork_oil_type       TEXT,
-  shock_preload       INT,
-  shock_compression_high INT,
-  shock_compression_low  INT,
-  shock_rebound       INT,
-  feeling_rating      INT CHECK (feeling_rating BETWEEN 1 AND 5),
-  notes               TEXT,
-  created_at          TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE moto_settings_history ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users see own history" ON moto_settings_history FOR ALL USING (auth.uid() = user_id);
-```
-
-### Tabla `session_notes`
-```sql
-CREATE TABLE session_notes (
-  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vehicle_id      UUID REFERENCES vehicles(id) ON DELETE CASCADE,
-  user_id         UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  date            DATE NOT NULL,
-  location        TEXT,
-  condition       TEXT NOT NULL CHECK (condition IN ('track_dry', 'track_wet', 'road', 'offroad', 'rain', 'other')),
-  km_start        INT,
-  km_end          INT,
-  setting_id      UUID REFERENCES moto_settings_history(id),
-  title           TEXT NOT NULL,
-  content         TEXT,
-  feeling_rating  INT CHECK (feeling_rating BETWEEN 1 AND 5),
-  created_at      TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE session_notes ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users see own sessions" ON session_notes FOR ALL USING (auth.uid() = user_id);
-```
-
-### Tabla `vehicle_documents` (manuales y listas de piezas en PDF)
-```sql
-CREATE TABLE vehicle_documents (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  vehicle_id   UUID REFERENCES vehicles(id) ON DELETE CASCADE,
-  user_id      UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-  name         TEXT NOT NULL,
-  storage_path TEXT NOT NULL,
-  doc_type     TEXT NOT NULL CHECK (doc_type IN ('manual', 'parts_list')),
-  file_size    INTEGER,
-  created_at   TIMESTAMPTZ DEFAULT now()
-);
-ALTER TABLE vehicle_documents ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Users see own documents" ON vehicle_documents FOR ALL USING (auth.uid() = user_id);
-```
+Diferencias tecnicas vs. el esquema Postgres original: `UUID` → `String @id @default(uuid())`, `TIMESTAMPTZ` → `DateTime`, `NUMERIC` → `Decimal`, sin RLS.
 
 ---
 
-## Supabase Storage
+## Almacenamiento de archivos (uploads)
 
-### Bucket `vehicle-docs` (PDFs de manuales y piezas)
-- Tipo: **Private**
-- Crear desde Supabase → Storage → New bucket → nombre: `vehicle-docs`
-- Policy (ejecutar en SQL Editor):
-```sql
-CREATE POLICY "auth users manage own docs" ON storage.objects
-FOR ALL TO authenticated
-USING (bucket_id = 'vehicle-docs')
-WITH CHECK (bucket_id = 'vehicle-docs');
-```
-- Los archivos se suben a la ruta `{user_id}/{vehicle_id}/{timestamp}.pdf`
-- Las URLs se generan como signed URLs (1 hora de validez) en el hook `useVehicleDocuments`
+- PDFs (manuales, listas de piezas, facturas de mantenimiento) en `server/uploads/` en disco del VPS, **no** en Supabase Storage.
+- Rutas de descarga protegidas con **URLs firmadas HMAC** (`server/src/lib/signedUrl.ts`), no token crudo en la URL.
+- Validacion de `vehicleId` / `id` como UUID antes de tocar filesystem + `assertInsideUploads` (realpath guard) para evitar path traversal, tanto en `documents.ts` como en `maintenance.ts` (rutas de factura).
+- Descarga por defecto `inline` para PDFs (con `Content-Security-Policy: sandbox` y `X-Content-Type-Options: nosniff`), `?dl=1` fuerza descarga. Archivos no-PDF siempre se sirven como `attachment`.
+- Manuales/piezas: `server/uploads/{vehicleId}/{timestamp}.ext`
+- Facturas de mantenimiento: `server/uploads/maintenance/{maintenanceLogId}/{workshop|parts}.pdf`
+- Limite de subida: 50MB por archivo (multer).
 
 ---
 
@@ -311,14 +204,13 @@ Solo **Coche** y **Moto** en el formulario de alta. El campo `type` en la BD ace
 ### `/vehicles/:id` — Detalle
 - Header con boton editar (abre modal), Settings (solo motos), QR, Exportar PDF
 - Tab **Resumen**: foto/icono, km + horas, badge estado, IntervalCalc, notas, seccion Documentos (PDFs), boton Notas de sesion (solo motos)
-- Tab **Ordinario**: log de mantenimiento ordinario
-- Tab **Extraordinario**: log de mantenimiento extraordinario
+- Tab **Mantenimiento**: log unificado (ordinario + extraordinario, ya no son tabs separadas), con adjuntar/ver facturas de taller y de piezas por entrada
 - Tab **Setup** (solo motos): boton hacia MotoSettings
 
 ### `/vehicles/:id/settings` — Setup moto
 - Tab **Activo**: formulario Carburacion + Suspension, botones "Guardar snapshot" y "Guardar"
 - Tab **Historial**: lista de snapshots, comparador (seleccionar 2 → tabla diff)
-- Carga el form con `useEffect` + `useRef` para sincronizar cuando los datos llegan de Supabase
+- Carga el form con `useEffect` + `useRef` para sincronizar cuando los datos llegan del backend
 
 ### `/vehicles/:id/sessions` — Notas de sesion (solo motos)
 
@@ -362,20 +254,28 @@ function getMaintenanceStatus(vehicle, lastLog) {
 ## Comandos de desarrollo
 
 ```bash
-npm install          # instalar dependencias
-npm run dev          # servidor local
+npm install          # instalar dependencias (frontend)
+npm run dev          # servidor local frontend
 npm run build        # build produccion (vite build)
+
+cd server
+npm install
+npm run dev          # servidor local backend (ts-node-dev)
+npm run build        # compila TS -> dist/
+npx prisma migrate deploy   # aplica migraciones pendientes
 ```
 
 ---
 
 ## Notas de implementacion
 
-1. **Auth**: Supabase email/password. Confirmacion de email **desactivada** en Supabase → Auth → Settings para facilitar el registro.
+1. **Auth**: JWT + bcrypt, multi-usuario. `POST /api/auth/login` consulta la tabla `users` y devuelve un JWT (7 dias, payload `{userId}`) verificado por `middleware/auth.ts` en todas las rutas `/api/*` salvo login — adjunta `req.userId` para que cada ruta filtre/verifique ownership. Frontend guarda el token en `localStorage` (`src/lib/api.ts`), sin cambios respecto al modelo single-user (mismo formulario, mismo flujo).
 2. **PDF export**: usar `BlobProvider` de `@react-pdf/renderer` v3, no `PDFDownloadLink` (incompatibilidad de tipos con render props en v3).
-3. **MotoSettings form**: se inicializa vacio y se sincroniza con `useEffect` + `useRef(false)` cuando llegan los datos de Supabase, para evitar que el form se resetee en cada render.
+3. **MotoSettings form**: se inicializa vacio y se sincroniza con `useEffect` + `useRef(false)` cuando llegan los datos del backend, para evitar que el form se resetee en cada render.
 4. **Imagenes de vehiculos**: URL externa guardada en `photo_url`. Busqueda via Google CSE solo si estan configuradas las variables `VITE_GOOGLE_CSE_API_KEY` y `VITE_GOOGLE_CSE_CX`.
 5. **QR**: URL apunta a `window.location.origin + '/vehicles/' + id`. Descarga PNG via `canvas.toDataURL()`.
-6. **Documentos PDF**: subida a Supabase Storage bucket `vehicle-docs`, ruta `{user_id}/{vehicle_id}/{timestamp}.ext`. URLs como signed URLs de 1h en el hook.
-7. **RLS**: activo en todas las tablas. Cada usuario ve solo sus datos.
-8. **Offline / PWA**: fase 2 (vite-plugin-pwa).
+6. **Documentos y facturas PDF**: subida a disco del VPS (`server/uploads/`), servidos via Express con URLs firmadas HMAC (no token crudo en query string), validacion de UUID + realpath guard contra path traversal. Limite 50MB.
+7. **Seguridad**: sin RLS; el aislamiento de datos entre usuarios depende enteramente de que cada ruta filtre/verifique por `req.userId` (via `vehicle.userId`, ver seccion de esquema). Al agregar una ruta nueva o un query nuevo, siempre confirmar que tiene ese filtro — no hay red de seguridad a nivel de base de datos. Validar siempre `vehicleId`/`id` como UUID antes de construir paths de filesystem.
+8. **Offline / PWA**: fase 2 (vite-plugin-pwa) — pendiente tambien de HTTPS definitivo, ver `DEPLOY.md`.
+9. **Operaciones VPS**: ver `DEPLOY.md` para acceso SSH, deploy, backups, troubleshooting y datos de configuracion del servidor. No tocar el proyecto `petits-exploradors` que comparte el mismo VPS.
+10. **Anadir usuarios**: no hay registro publico. Cuentas nuevas (beta testers, etc.) se crean desde el VPS con `npm run create-user -- email password` (`server/scripts/create-user.ts`, upsert por email — tambien sirve para resetear password). Ver seccion "Anadir un nuevo usuario" en `DEPLOY.md`.

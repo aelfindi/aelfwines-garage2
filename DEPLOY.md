@@ -12,7 +12,7 @@ su - aelfwine-garage     # cambiar al user del sitio
 cd /home/aelfwine-garage/htdocs/garage.aelfwine.info
 ```
 
-**URL temporal:** `http://187.33.147.146:3002` (hasta tener dominio + HTTPS)
+**URL produccion:** `https://garage.aelfwine.eu` (dominio + HTTPS reales, ver seccion "Dominio + HTTPS" mas abajo). El puerto 3002 esta cerrado al exterior por firewall — solo accesible via `127.0.0.1` para el reverse-proxy de nginx.
 
 ---
 
@@ -146,52 +146,49 @@ tar czf /home/aelfwine-garage/backups/uploads_$(date +%Y%m%d).tar.gz \
 
 ---
 
-## Configurar dominio + HTTPS (cuando compres el dominio)
+## Dominio + HTTPS
 
-### 1. DNS
-- Apuntar A record de `garage.tudominio.tld` a `187.33.147.146`
-- Esperar propagacion (5-30 min). Verifica con `dig garage.tudominio.tld +short` o `nslookup`.
+`garage.aelfwine.eu` es el dominio real de produccion (comprado en cdmon el 2026-08-18). `garage.aelfwine.info` (el dominio anterior) **nunca quedo apuntado correctamente** — su DNS resolvia a una IP que no es este VPS — y su vhost/carpeta siguen existiendo solo porque ahi vive el codigo de la app (`/home/aelfwine-garage/htdocs/garage.aelfwine.info/`), no porque ese dominio funcione.
 
-### 2. Editar el sitio en el panel del VPS
-Si el panel permite "Edit domain": cambia `garage.aelfwine.info` por el dominio real. Esto suele actualizar:
-- `server_name` en nginx
-- Nombre del directorio htdocs (cuidado: rompe paths)
-- Path de logs
+El sitio del dominio nuevo se hizo como un **reverse-proxy separado en CloudPanel**, sin mover nada del codigo/PM2 existente — sigue corriendo el mismo Express en `127.0.0.1:3002`, solo se le agrego un vhost+cert nuevo delante.
 
-Si NO permite cambiar dominio: crear sitio nuevo, mover codigo y `uploads/`, reconfigurar `.env` y PM2 con el path nuevo.
+### 1. DNS (en el panel del registrador, ej. cdmon)
+- A record: `garage` -> `187.33.147.146`
+- Verificar propagacion: `dig garage.aelfwine.eu +short` (debe devolver la IP del VPS)
 
-### 3. Instalar certbot + emitir Let's Encrypt
-Si el panel emite el cert: usar la UI del panel.
-
-Si manual (como root):
+### 2. Crear el sitio en CloudPanel (como root, via `clpctl`)
 ```bash
-apt install -y certbot python3-certbot-nginx
-certbot --nginx -d garage.tudominio.tld
+clpctl site:add:reverse-proxy --domainName=garage.aelfwine.eu --reverseProxyUrl='http://127.0.0.1:3002' --siteUser=garage-eu --siteUserPassword="$(openssl rand -base64 24)"
+```
+Esto crea el vhost de nginx + un usuario Linux nuevo que no se usa para nada (solo requisito interno de CloudPanel). El `clpctl` no tiene comando para "agregar dominio alias" a un sitio existente — por eso se crea un sitio nuevo en vez de editar `garage.aelfwine.info`.
+
+### 3. Certificado Let's Encrypt (como root)
+```bash
+clpctl lets-encrypt:install:certificate --domainName=garage.aelfwine.eu
 ```
 
-### 4. Actualizar variables de entorno
+### 4. Actualizar variables de entorno y redeploy
 Como `aelfwine-garage`:
 ```bash
 cd /home/aelfwine-garage/htdocs/garage.aelfwine.info
-sed -i 's|^VITE_API_URL=.*|VITE_API_URL=/api|' .env
-sed -i 's|^CORS_ORIGIN=.*|CORS_ORIGIN=https://garage.tudominio.tld|' server/.env
-
-# Rebuild frontend + restart
+sed -i 's|^VITE_API_URL=.*|VITE_API_URL=https://garage.aelfwine.eu/api|' .env
+sed -i 's|^CORS_ORIGIN=.*|CORS_ORIGIN=https://garage.aelfwine.eu|' server/.env
 ./deploy.sh
 ```
 
-### 5. Cerrar puerto 3002 al publico (ya no se accede directo)
-Como root:
+### 5. Cerrar puerto 3002 al publico
+Como root — **ojo, dejar intacta la regla del puerto `3000`, es de `petits-exploradors`**:
 ```bash
 ufw delete allow 3002/tcp
 ufw status
 ```
+El proxy interno sigue hablando por `127.0.0.1:3002`, eso no lo bloquea el firewall (solo filtra trafico externo).
 
-### 6. Verifica
-- `https://garage.tudominio.tld` carga la app
-- Login funciona
-- En Android: Menu Chrome -> "Instalar app" (aparece el prompt PWA)
-- Tras instalar, el icono abre en modo standalone (sin barra Chrome)
+### 6. Verificar
+- `curl https://garage.aelfwine.eu/api/health` -> `{"ok":true}`
+- Login funciona (probar con `curl` como en "Anadir un nuevo usuario", y tambien en el navegador — un intento inmediatamente despues del deploy puede fallar por cache del navegador, forzar `Ctrl+Shift+R`)
+- Probar acceso directo a `http://187.33.147.146:3002` **desde fuera del VPS** (no desde la propia VPS — el trafico a la propia IP publica no pasa por las mismas reglas de `ufw`) — debe colgarse/fallar
+- En Android: Menu Chrome -> "Instalar app" (prompt PWA)
 
 ---
 
@@ -248,9 +245,9 @@ ls -la server/dist/index.js
 ```
 
 ### Login devuelve "Invalid credentials"
-- Verifica `ADMIN_EMAIL` y `ADMIN_PASSWORD_HASH` en `server/.env`
-- Si dudas del hash, regeneralo (ver "Cambiar la password admin")
-- Tras editar `.env`, **siempre** `pm2 restart garage-api --update-env` (sin `--update-env` no recarga env vars)
+- El login consulta la tabla `users` (Prisma), **no** `ADMIN_EMAIL`/`ADMIN_PASSWORD_HASH` (esas variables son solo bootstrap, ver "Anadir un nuevo usuario")
+- Resetea la password de la cuenta con `npm run create-user -- email password-nueva` (es un upsert, tambien sirve para esto)
+- Tras editar `.env` a mano por otro motivo, **siempre** `pm2 restart garage-api --update-env` (sin `--update-env` no recarga env vars)
 
 ### MySQL: "Access denied for user"
 Verifica grants:
@@ -277,8 +274,9 @@ pm2 flush garage-api    # vacia logs PM2
 
 ## Tareas pendientes / mejoras futuras
 
-- [ ] Comprar dominio definitivo (aelfwine.eu u otro) y configurar HTTPS via Let's Encrypt
+- [x] Comprar dominio definitivo y configurar HTTPS via Let's Encrypt — `garage.aelfwine.eu`, 2026-08-18
 - [ ] Generar migraciones Prisma versionadas (actualmente `db push`)
+- [ ] Decidir que hacer con el sitio/vhost viejo `garage.aelfwine.info` (dominio nunca funciono, pero el codigo vive en esa carpeta — no borrar sin migrar el path primero)
 - [ ] Backup automatico DB + uploads via cron
 - [ ] Rotar `service_role_key` de Supabase (expuesta en chat del 2026-06-09 durante migracion)
 - [ ] Service worker + iconos PNG 192/512 para PWA install completo (necesita HTTPS antes)
@@ -298,10 +296,11 @@ pm2 flush garage-api    # vacia logs PM2
 | PM2 daemon | `/home/aelfwine-garage/.pm2/` |
 | Servicio systemd | `pm2-aelfwine-garage` (arranca en reboot) |
 | PM2 proceso | `garage-api` |
-| Puerto Express | 3002 |
-| nginx config | `/etc/nginx/sites-enabled/garage.aelfwine.info.conf` |
-| Logs nginx | `/home/aelfwine-garage/logs/nginx/` |
-| SSL cert | `/etc/nginx/ssl-certificates/garage.aelfwine.info.{crt,key}` (self-signed, placeholder) |
+| Puerto Express | 3002 (solo `127.0.0.1`, cerrado al exterior via `ufw`) |
+| Dominio produccion | `garage.aelfwine.eu` (comprado en cdmon) |
+| nginx config (dominio real) | `/etc/nginx/sites-enabled/garage.aelfwine.eu.conf` — sitio CloudPanel tipo reverse-proxy, siteUser `garage-eu` |
+| nginx config (legacy, no funcional) | `/etc/nginx/sites-enabled/garage.aelfwine.info.conf` — el dominio nunca resolvio a este VPS, la carpeta se mantiene solo porque ahi vive el codigo |
+| SSL cert | Let's Encrypt real para `garage.aelfwine.eu` (via `clpctl lets-encrypt:install:certificate`) |
 | DB host | `127.0.0.1:3306` (MariaDB 10.11) |
 | DB nombre | `aelfwinesGarage` |
 | DB user | `garageUser@'%'` |
